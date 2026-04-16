@@ -1,0 +1,8 @@
+{
+  "name": "MaestroVibe Pro",
+  "description": "An intelligent trumpet practice app with real-time pitch detection, extended repertoire (Classics, Pop, Jazz), and support for PDF, ABC, and MuseScore (.mscz) files.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
