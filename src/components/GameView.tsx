@@ -12,7 +12,7 @@ interface GameViewProps {
 }
 
 export default function GameView({ notes, playheadTime, currentNoteIndex, tempo, transposeSteps, isPitchMatching, currentFreq }: GameViewProps) {
-  const BEAT_HEIGHT = 150; // pixels per beat
+  const BEAT_HEIGHT = 120; // Reduced from 150 for better mobile visibility
 
   const noteStartTimes = useMemo(() => {
     let time = 0;
@@ -34,7 +34,7 @@ export default function GameView({ notes, playheadTime, currentNoteIndex, tempo,
       {/* Falling Blocks Area */}
       <div className="flex-1 relative flex justify-center overflow-hidden bg-gradient-to-b from-transparent to-black/60 min-h-0">
         {/* Track Background */}
-        <div className="w-[240px] h-full bg-white/[0.02] border-x border-white/5 relative">
+        <div className="w-[200px] h-full bg-white/[0.02] border-x border-white/5 relative">
           
           {/* Beat Grid Lines */}
           {(() => {
@@ -114,10 +114,10 @@ export default function GameView({ notes, playheadTime, currentNoteIndex, tempo,
               return (
                 <div 
                   key={vIndex} 
-                  className={`w-10 h-10 rounded-full border-[3px] flex items-center justify-center transition-all duration-100
-                    ${isPressed ? `${activeColor} ${activeBorder} shadow-[0_0_20px_rgba(0,0,0,0.8)] ${activeShadow}` : 'border-white/20 bg-black/80'}`}
+                  className={`w-8 h-8 rounded-full border-[2px] flex items-center justify-center transition-all duration-100
+                    ${isPressed ? `${activeColor} ${activeBorder} shadow-[0_0_15px_rgba(0,0,0,0.8)] ${activeShadow}` : 'border-white/20 bg-black/80'}`}
                 >
-                  <span className={`text-xs font-bold ${isPressed ? 'text-black' : 'text-white/30'}`}>{vIndex + 1}</span>
+                  <span className={`text-[0.65rem] font-bold ${isPressed ? 'text-black' : 'text-white/30'}`}>{vIndex + 1}</span>
                 </div>
               );
             })}
@@ -136,7 +136,10 @@ export default function GameView({ notes, playheadTime, currentNoteIndex, tempo,
             if (relativeTime < -4 || relativeTime > 10) return null;
 
             const bottomPos = 60 + (relativeTime * BEAT_HEIGHT);
-            const height = note.duration * BEAT_HEIGHT - 4; // -4 for a small gap between notes
+            
+            // Calculate visual articulation gap so notes aren't continuously glued together
+            const articulationGap = Math.max(8, Math.min(24, (note.duration * BEAT_HEIGHT) * 0.15));
+            const height = Math.max(12, note.duration * BEAT_HEIGHT - articulationGap);
             
             const isOpen = !targetNote.fingering[0] && !targetNote.fingering[1] && !targetNote.fingering[2];
             const isCurrent = index === currentNoteIndex;
@@ -170,18 +173,16 @@ export default function GameView({ notes, playheadTime, currentNoteIndex, tempo,
                     <span className="text-white/90 font-bold drop-shadow-md">{targetNote.name}</span>
                   </div>
                 ) : (
-                  targetNote.fingering.map((isPressed, vIndex) => {
-                    return (
-                      <div key={vIndex} className="w-10 flex justify-center h-full">
-                        {isPressed && (
-                          <div 
-                            className={`w-8 h-full rounded-md transition-all duration-100 ${isCurrent && isPitchMatching ? 'shadow-[0_0_25px_rgba(0,255,136,0.8)]' : 'shadow-[0_0_15px_rgba(0,0,0,0.5)]'}`} 
-                            style={{ backgroundColor: noteColor, boxShadow: isCurrent && isPitchMatching ? `0 0 25px ${noteColor}` : `0 0 15px ${noteColor}` }}
-                          />
-                        )}
-                      </div>
-                    );
-                  })
+                  targetNote.fingering.map((isPressed, vIndex) => (
+                    <div key={vIndex} className="w-8 flex justify-center h-full">
+                      {isPressed && (
+                        <div 
+                          className={`w-6 h-full rounded-md transition-all duration-100 ${isCurrent && isPitchMatching ? 'shadow-[0_0_20px_rgba(0,255,136,0.8)]' : 'shadow-[0_0_10px_rgba(0,0,0,0.5)]'}`} 
+                          style={{ backgroundColor: noteColor, boxShadow: isCurrent && isPitchMatching ? `0 0 20px ${noteColor}` : `0 0 10px ${noteColor}` }}
+                        />
+                      )}
+                    </div>
+                  ))
                 )}
               </div>
             );
@@ -212,10 +213,10 @@ export default function GameView({ notes, playheadTime, currentNoteIndex, tempo,
                   ${isCurrent ? 'text-[#d4af37] scale-110' : 'text-white/40'}`}
                 style={{ width: `${width}px` }}
               >
-                <div className="font-mono text-2xl font-bold">
+                <div className="font-mono text-xl font-bold">
                   {targetNote ? targetNote.name.replace(/\d/, '') : '?'}
                 </div>
-                <div className="text-[0.6rem] opacity-50 mt-1">
+                <div className="text-[0.55rem] opacity-50 mt-1">
                   {targetNote ? targetNote.name : ''}
                 </div>
               </div>

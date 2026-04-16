@@ -647,9 +647,9 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-2 flex flex-col landscape:grid landscape:grid-cols-[160px_1fr_160px] md:grid md:grid-cols-[200px_1fr_220px] lg:grid-cols-[220px_1fr_240px] gap-2 overflow-y-auto landscape:overflow-hidden md:overflow-hidden custom-scrollbar">
+      <main className="flex-1 p-2 flex flex-col landscape:grid landscape:grid-cols-[140px_1fr_160px] md:grid md:grid-cols-[200px_1fr_220px] lg:grid-cols-[220px_1fr_240px] gap-2 overflow-y-auto landscape:overflow-hidden md:overflow-hidden custom-scrollbar">
         {/* Left Panel */}
-        <section className="flex flex-col gap-2 shrink-0 landscape:shrink landscape:overflow-y-auto landscape:min-h-0 landscape:pr-1 md:shrink md:overflow-y-auto md:min-h-0 md:pr-1 custom-scrollbar">
+        <section className="min-w-0 flex flex-col gap-2 shrink-0 landscape:shrink landscape:overflow-y-auto landscape:min-h-0 landscape:pr-1 md:shrink md:overflow-y-auto md:min-h-0 md:pr-1 custom-scrollbar">
           <div className="bg-white/5 border border-white/5 rounded-[12px] p-3 backdrop-blur-[10px] shrink-0">
             <h3 className="text-[0.65rem] uppercase tracking-[1px] mb-[10px] text-[#d4af37]">Practice Controls</h3>
             <div className="flex flex-col gap-2">
@@ -669,26 +669,26 @@ export default function App() {
 
               <button 
                 onClick={() => { setCurrentNoteIndex(0); setScore(0); setAutoPlay(false); }}
-                className="py-2 rounded-lg font-bold text-xs bg-white/10 hover:bg-white/20 transition-colors"
+                className="py-1.5 rounded-lg font-bold text-[0.65rem] bg-white/10 hover:bg-white/20 transition-colors"
               >
                 Reset
               </button>
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className={`py-2 rounded-lg font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 border-dashed flex items-center justify-center gap-2 mt-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`py-1.5 rounded-lg font-bold text-[0.65rem] bg-white/5 hover:bg-white/10 border border-white/10 border-dashed flex items-center justify-center gap-1.5 mt-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <Upload className="w-3 h-3" /> {isUploading ? 'Lendo Arquivo...' : 'Upload PDF / MSCZ'}
+                <Upload className="w-3 h-3" /> {isUploading ? 'Lendo...' : 'Upload PDF/MSCZ'}
               </button>
               <button 
                 onClick={() => setIsPasteAbcOpen(true)}
-                className="py-2 rounded-lg font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 border-dashed flex items-center justify-center gap-2"
+                className="py-1.5 rounded-lg font-bold text-[0.65rem] bg-white/5 hover:bg-white/10 border border-white/10 border-dashed flex items-center justify-center gap-1.5"
               >
-                <FileCode className="w-3 h-3 text-[#d4af37]" /> Colar Código ABC
+                <FileCode className="w-3 h-3 text-[#d4af37]" /> Colar ABC
               </button>
               <button 
                 onClick={() => setIsScaleGeneratorOpen(true)}
-                className="py-2 rounded-lg font-bold text-xs bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center gap-2"
+                className="py-1.5 rounded-lg font-bold text-[0.65rem] bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center gap-1.5"
               >
                 <Award className="w-3 h-3 text-[#d4af37]" /> Scales & Arpeggios
               </button>
@@ -737,13 +737,13 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2">
                    <button onClick={() => setTempo(t => Math.max(40, t - 5))} className="w-6 h-6 flex items-center justify-center bg-white/10 rounded hover:bg-white/20 text-[0.6rem]">-5</button>
-                   <input 
+                    <input 
                     type="range" 
                     min="40" 
                     max="200" 
                     value={tempo} 
                     onChange={(e) => setTempo(Number(e.target.value))}
-                    className="flex-1 accent-[#d4af37] h-1"
+                    className="flex-1 min-w-0 accent-[#d4af37] h-1"
                   />
                   <button onClick={() => setTempo(t => Math.min(200, t + 5))} className="w-6 h-6 flex items-center justify-center bg-white/10 rounded hover:bg-white/20 text-[0.6rem]">+5</button>
                 </div>
@@ -762,7 +762,7 @@ export default function App() {
                     max="12" 
                     value={transposeSteps} 
                     onChange={(e) => setTransposeSteps(Number(e.target.value))}
-                    className="w-full accent-[#d4af37] h-1"
+                    className="flex-1 min-w-0 w-full accent-[#d4af37] h-1"
                   />
                   <button onClick={() => setTransposeSteps(s => s + 1)} className="px-2 py-0.5 text-xs bg-white/10 rounded hover:bg-white/20">+</button>
                 </div>
@@ -793,19 +793,19 @@ export default function App() {
                   </div>
                   <button 
                     onClick={isListening ? stopListening : startListening}
-                    className={`py-2 rounded-lg font-bold text-xs transition-all ${isListening ? 'bg-[#ff4444] text-white shadow-[0_0_10px_#ff4444]' : 'bg-[#00ff88] text-[#05070a] shadow-[0_0_10px_#00ff88]'}`}
+                    className={`py-1.5 rounded-lg font-bold text-[0.65rem] transition-all ${isListening ? 'bg-[#ff4444] text-white shadow-[0_0_10px_#ff4444]' : 'bg-[#00ff88] text-[#05070a] shadow-[0_0_10px_#00ff88]'}`}
                   >
                     {isListening ? 'Stop Mic' : 'Start Mic'}
                   </button>
                   <button 
                     onClick={autoPlay || isCountingIn ? stopPlayback : startPlayback}
-                    className={`py-2 rounded-lg font-bold text-xs transition-all flex-1 ${autoPlay || isCountingIn ? 'bg-white/20 text-white' : 'bg-[#d4af37] text-[#05070a] shadow-[0_0_10px_#d4af37]'}`}
+                    className={`py-1.5 rounded-lg font-bold text-[0.65rem] transition-all flex-1 ${autoPlay || isCountingIn ? 'bg-white/20 text-white' : 'bg-[#d4af37] text-[#05070a] shadow-[0_0_10px_#d4af37]'}`}
                   >
                     {autoPlay || isCountingIn ? 'Stop Game' : 'Start Game'}
                   </button>
                   <button 
                     onClick={() => setSoundEnabled(!soundEnabled)}
-                    className={`py-1.5 px-3 rounded-lg font-bold text-xs transition-all ${soundEnabled ? 'bg-[#00ff88] text-[#05070a]' : 'bg-white/10 text-white/50'}`}
+                    className={`py-1.5 px-2 rounded-lg font-bold text-[0.65rem] transition-all ${soundEnabled ? 'bg-[#00ff88] text-[#05070a]' : 'bg-white/10 text-white/50'}`}
                   >
                     Sound {soundEnabled ? 'ON' : 'OFF'}
                   </button>
@@ -823,7 +823,7 @@ export default function App() {
         </section>
 
         {/* Center Panel */}
-        <section className="flex flex-col gap-2 relative shrink-0 landscape:shrink landscape:min-h-0 landscape:overflow-hidden md:shrink md:min-h-0 md:overflow-hidden">
+        <section className="min-w-0 flex flex-col gap-2 relative shrink-0 landscape:shrink landscape:min-h-0 landscape:overflow-hidden md:shrink md:min-h-0 md:overflow-hidden">
           {isCountingIn && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-[12px]">
               <span className="text-[6rem] font-bold text-[#d4af37] animate-pulse">
@@ -976,7 +976,7 @@ export default function App() {
         </section>
 
         {/* Right Panel */}
-        <section className="flex flex-col gap-2 w-full landscape:w-auto md:w-auto shrink-0 landscape:shrink landscape:overflow-y-auto landscape:min-h-0 landscape:pr-1 md:shrink md:overflow-y-auto md:min-h-0 md:pr-1 custom-scrollbar">
+        <section className="min-w-0 flex flex-col gap-2 w-full landscape:w-auto md:w-auto shrink-0 landscape:shrink landscape:overflow-y-auto landscape:min-h-0 landscape:pr-1 md:shrink md:overflow-y-auto md:min-h-0 md:pr-1 custom-scrollbar">
           <div className="shrink-0">
             <Tuner 
               currentFreq={currentFreq} 

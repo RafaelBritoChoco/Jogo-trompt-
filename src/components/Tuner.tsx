@@ -119,32 +119,30 @@ export default function Tuner({
       
       {/* Target Note (Top) */}
       <div className="flex flex-col items-center mb-2">
-        <span className="text-[0.6rem] uppercase tracking-[2px] text-[#d4af37] opacity-80 mb-1">Target Note</span>
-        <div className="text-[2.5rem] font-[200] leading-none text-white">
+        <span className="text-[0.55rem] uppercase tracking-[2px] text-[#d4af37] opacity-80 mb-1">Target Note</span>
+        <div className="text-[2rem] font-[200] leading-none text-white">
           {targetBase}
           {targetAccidental && <span className="text-[1.2rem]">{targetAccidental}</span>}
-          <span className="text-[1rem] opacity-50 ml-1">{targetOctave}</span>
+          <span className="text-[0.8rem] opacity-50 ml-1">{targetOctave}</span>
         </div>
-        <div className="text-[0.7rem] font-mono text-white/50 mt-1">{targetNote.freq.toFixed(1)} Hz</div>
+        <div className="text-[0.6rem] font-mono text-white/50 mt-1">{targetNote.freq.toFixed(1)} Hz</div>
       </div>
       
       {/* Needle Area (Middle) */}
-      <div className="w-full h-[80px] bg-black/40 rounded-[8px] my-[10px] relative overflow-hidden border border-white/5 flex flex-col justify-center">
+      <div className="w-full h-[60px] bg-black/40 rounded-[8px] my-[10px] relative overflow-hidden border border-white/5 flex flex-col justify-center">
         
         {/* Tick marks background */}
         <div className="absolute top-0 w-full flex justify-between px-2 opacity-20">
-          {[...Array(21)].map((_, i) => (
-            <div key={i} className={`w-[1px] ${i === 10 ? 'h-4 bg-white' : i % 5 === 0 ? 'h-3 bg-white' : 'h-2 bg-white'}`} />
+          {[...Array(11)].map((_, i) => (
+            <div key={i} className={`w-[1px] ${i === 5 ? 'h-4 bg-white' : 'h-2 bg-white'}`} />
           ))}
         </div>
 
         {/* Labels for ticks */}
-        <div className="absolute top-5 w-full flex justify-between px-2 text-[0.5rem] text-white/30 font-mono">
-          <span>-100c</span>
-          <span className="ml-2">-50c</span>
+        <div className="absolute top-5 w-full flex justify-between px-2 text-[0.45rem] text-white/30 font-mono">
+          <span>-100</span>
           <span>0</span>
-          <span className="mr-2">+50c</span>
-          <span>+100c</span>
+          <span>+100</span>
         </div>
 
         {/* Center marker */}
@@ -211,12 +209,12 @@ export default function Tuner({
           </div>
         )}
         <div className="flex items-baseline gap-3">
-          <div className="text-[1.5rem] font-[300]" style={{ color: isPlaying ? statusColor : '#e0e0e0' }}>
+          <div className="text-[1.2rem] font-[300]" style={{ color: isPlaying ? statusColor : '#e0e0e0' }}>
             {isPlaying ? (
               <>
                 {actualBase}
-                {actualAccidental && <span className="text-[0.8rem]">{actualAccidental}</span>}
-                <span className="text-[0.7rem] opacity-50 ml-1">{actualOctave}</span>
+                {actualAccidental && <span className="text-[0.7rem]">{actualAccidental}</span>}
+                <span className="text-[0.6rem] opacity-50 ml-1">{actualOctave}</span>
               </>
             ) : (
               <span className="opacity-30">--</span>
@@ -246,7 +244,7 @@ export default function Tuner({
             step="5"
             value={pitchTolerance} 
             onChange={(e) => setPitchTolerance(Number(e.target.value))}
-            className="w-full accent-[#d4af37] h-1"
+            className="w-full min-w-0 accent-[#d4af37] h-1"
           />
         </div>
         <div>
@@ -262,7 +260,7 @@ export default function Tuner({
             step="1"
             value={micSensitivity} 
             onChange={(e) => setMicSensitivity(Number(e.target.value))}
-            className="w-full accent-[#00ff88] h-1"
+            className="w-full min-w-0 accent-[#00ff88] h-1"
           />
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-white/5">

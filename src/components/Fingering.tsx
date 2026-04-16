@@ -19,18 +19,18 @@ export default function Fingering({ valves, noteName }: FingeringProps) {
         )}
       </div>
       
-      <div className="flex justify-center gap-4 w-full">
+      <div className="flex justify-center gap-3 w-full">
         {valves.map((isPressed, index) => (
-          <div key={index} className="flex flex-col items-center gap-3">
+          <div key={index} className="flex flex-col items-center gap-2">
             <div 
-              className={`w-14 h-14 border-[2px] border-[#d4af37] rounded-full flex items-center justify-center transition-all duration-300
-                ${isPressed ? 'bg-[#d4af37] shadow-[0_0_20px_rgba(212,175,55,0.6)]' : 'bg-transparent'}`}
+              className={`w-10 h-10 border-[2px] border-[#d4af37] rounded-full flex items-center justify-center transition-all duration-300
+                ${isPressed ? 'bg-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.6)]' : 'bg-transparent'}`}
             >
-              <span className={`font-black text-xl ${isPressed ? 'text-[#05070a]' : 'text-white/30'}`}>
+              <span className={`font-black text-lg ${isPressed ? 'text-[#05070a]' : 'text-white/30'}`}>
                 {index + 1}
               </span>
             </div>
-            <span className="font-mono text-[#d4af37] text-[0.65rem]">{FINGER_NAMES[index]}</span>
+            <span className="font-mono text-[#d4af37] text-[0.55rem]">{FINGER_NAMES[index]}</span>
           </div>
         ))}
       </div>
