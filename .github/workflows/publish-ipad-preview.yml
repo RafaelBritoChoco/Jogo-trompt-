@@ -1,0 +1,201 @@
+name: Publish iPad preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pong-3d-ipad-fix
+    paths:
+      - index.html
+      - .github/workflows/publish-ipad-preview.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-3d-ipad-fix
+          fetch-depth: 0
+
+      - name: Publish current HTML as a real HTTPS site
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREVIEW_URL="$(curl --retry 5 --retry-delay 3 --retry-all-errors -fsS \
+            -X POST 'https://ship.page/deploy?ttl=604800' \
+            -H 'Content-Type: text/html' \
+            -H 'User-Agent: Pong-iPad-preview-auditor/1.0' \
+            --data-binary @index.html | tr -d '\r\n')"
+          echo "$PREVIEW_URL" | grep -Eq '^https://[a-z0-9-]+\.shipped\.page/$'
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          printf '%s\n' "$PREVIEW_URL" > preview-url.txt
+          echo "Published preview: $PREVIEW_URL"
+
+      - name: Verify public response is executable HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 6 --retry-delay 3 --retry-all-errors -fsSL -D live-headers.txt "$PREVIEW_URL" -o live-index.html
+          tr -d '\r' < live-headers.txt > normalized-live-headers.txt
+          grep -qi '^content-type: text/html' normalized-live-headers.txt
+          grep -q '<title>Neon Pong 3D</title>' live-index.html
+          grep -q 'window.__PONG__' live-index.html
+          grep -q 'id="pauseb"' live-index.html
+          test "$(wc -c < live-index.html)" -gt 12000
+
+      - name: Install browser audit harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pong-pw
+          cd /tmp/pong-pw
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps webkit >/dev/null
+
+      - name: Execute gameplay in Chrome and WebKit mobile profiles
+        shell: bash
+        env:
+          NODE_PATH: /tmp/pong-pw/node_modules
+          SYSTEM_CHROME: /usr/bin/google-chrome
+        run: |
+          cat > /tmp/pong-pw/audit.cjs <<'NODE'
+          const { chromium, webkit } = require('playwright');
+          const fs = require('fs');
+          const url = process.env.PREVIEW_URL;
+          const results = [];
+
+          function assert(value, message) {
+            if (!value) throw new Error(message);
+          }
+
+          async function audit(engine, browserType, launchOptions, profile) {
+            const browser = await browserType.launch({ headless: true, ...launchOptions });
+            const errors = [];
+            try {
+              const context = await browser.newContext({
+                viewport: profile.viewport,
+                deviceScaleFactor: 2,
+                hasTouch: true,
+                isMobile: true,
+                userAgent: profile.userAgent,
+              });
+              const page = await context.newPage();
+              page.on('pageerror', e => errors.push(String(e)));
+              page.on('console', msg => {
+                if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
+              });
+
+              await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await page.waitForFunction(() => document.documentElement.dataset.test === 'pass', null, { timeout: 15000 });
+
+              assert(await page.locator('#start').isVisible(), `${engine}: botão Jogar ausente`);
+              assert(await page.locator('#pauseb').isVisible(), `${engine}: botão Pausar ausente`);
+              assert(await page.locator('#reset').isVisible(), `${engine}: botão Reiniciar ausente`);
+              assert((await page.title()) === 'Neon Pong 3D', `${engine}: título incorreto`);
+
+              const before = await page.evaluate(() => window.__PONG__.state());
+              await page.locator('#start').click();
+              await page.waitForTimeout(900);
+              const playing = await page.evaluate(() => window.__PONG__.state());
+              assert(playing.state === 'play', `${engine}: partida não iniciou`);
+              assert(
+                Math.abs(playing.B.a - before.B.a) > 0.02 || Math.abs(playing.B.z - before.B.z) > 0.02,
+                `${engine}: bola não se moveu`
+              );
+
+              await page.locator('#pauseb').click();
+              await page.locator('#menu').waitFor({ state: 'visible', timeout: 3000 });
+              assert((await page.evaluate(() => window.__PONG__.state().state)) === 'pause', `${engine}: pausa falhou`);
+              await page.locator('#start').click();
+              assert((await page.evaluate(() => window.__PONG__.state().state)) === 'play', `${engine}: retomada falhou`);
+
+              const z0 = await page.evaluate(() => window.__PONG__.state().L);
+              const up = page.locator('[data-s="l"][data-d="-1"]');
+              assert(await up.isVisible(), `${engine}: controle tátil não apareceu`);
+              await up.dispatchEvent('pointerdown', { pointerId: 11, pointerType: 'touch', isPrimary: true, bubbles: true });
+              await page.waitForTimeout(350);
+              await up.dispatchEvent('pointerup', { pointerId: 11, pointerType: 'touch', isPrimary: true, bubbles: true });
+              const z1 = await page.evaluate(() => window.__PONG__.state().L);
+              assert(Math.abs(z1 - z0) > 0.02, `${engine}: controle tátil não moveu a raquete`);
+
+              const bar = await page.locator('.bar').boundingBox();
+              const upBox = await up.boundingBox();
+              assert(bar && upBox, `${engine}: geometria móvel ausente`);
+              const overlap = !(upBox.y + upBox.height <= bar.y || bar.y + bar.height <= upBox.y || upBox.x + upBox.width <= bar.x || bar.x + bar.width <= upBox.x);
+              assert(!overlap, `${engine}: controles móveis sobrepostos`);
+              assert(errors.length === 0, `${engine}: erros JavaScript: ${errors.join(' | ')}`);
+
+              const screenshot = `preview-${engine}-${profile.viewport.width}x${profile.viewport.height}.png`;
+              await page.screenshot({ path: screenshot, fullPage: true });
+              results.push({ engine, profile: profile.name, viewport: profile.viewport, passed: true, screenshot, url });
+              await context.close();
+            } finally {
+              await browser.close();
+            }
+          }
+
+          (async () => {
+            const ipad = {
+              name: 'iPad portrait',
+              viewport: { width: 820, height: 1180 },
+              userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+            };
+            const phone = {
+              name: 'phone portrait',
+              viewport: { width: 390, height: 844 },
+              userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+            };
+
+            await audit('chrome-ipad', chromium, {
+              executablePath: process.env.SYSTEM_CHROME,
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            }, ipad);
+            await audit('webkit-ipad', webkit, {}, ipad);
+            await audit('webkit-phone', webkit, {}, phone);
+
+            fs.writeFileSync('browser-results.json', JSON.stringify(results, null, 2));
+            console.log(JSON.stringify(results, null, 2));
+          })().catch(error => {
+            fs.writeFileSync('browser-results.json', JSON.stringify({ results, failure: String(error.stack || error), url }, null, 2));
+            console.error(error.stack || error);
+            process.exit(1);
+          });
+          NODE
+          node /tmp/pong-pw/audit.cjs
+
+      - name: Save verified preview URL on the branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > PUBLIC_PREVIEW_URL.txt <<EOF
+          $PREVIEW_URL
+
+          Verified by automated interaction tests in Chrome and WebKit.
+          Temporary anonymous preview; expected lifetime: 7 days from this workflow run.
+          EOF
+          cp /tmp/pong-pw/browser-results.json ./browser-results-latest.json
+          git config user.name 'Pong Preview Publisher'
+          git config user.email 'actions@users.noreply.github.com'
+          git add PUBLIC_PREVIEW_URL.txt browser-results-latest.json
+          git commit -m 'chore: store verified iPad preview URL [skip ci]'
+          git push origin HEAD:pong-3d-ipad-fix
+
+      - name: Upload verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pong-ipad-live-preview-evidence
+          path: |
+            preview-url.txt
+            PUBLIC_PREVIEW_URL.txt
+            browser-results-latest.json
+            preview-*.png
+            live-headers.txt
+            normalized-live-headers.txt
+            live-index.html
