@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 jobs:
-  audit-route:
+  audit-route-and-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Wait for CDN propagation
         run: sleep 20
 
-      - name: Verify immutable public HTML route
+      - name: Fetch and verify immutable public HTML route
         env:
           GAME_URL: https://rawcdn.githack.com/RafaelBritoChoco/Jogo-trompt-/729131567422664b2c8e2548d3634bffde3bc1f9/index.html
         run: |
@@ -29,3 +29,24 @@ jobs:
           grep -q 'window.__PONG__' game.html
           test "$(wc -c < game.html)" -gt 10000
           echo "Public route verified: $(wc -c < game.html) bytes"
+
+      - name: Execute fetched game in external Chrome
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8765 >/tmp/pong-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 2
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME"
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --disable-dev-shm-usage \
+            --virtual-time-budget=5000 \
+            --dump-dom http://127.0.0.1:8765/game.html > rendered-dom.html
+          grep -q 'data-test="pass"' rendered-dom.html
+          grep -q 'TESTES: 5/5 OK' rendered-dom.html
+          ! grep -q 'Canvas indisponível' rendered-dom.html
+          echo "External Chrome runtime verified"
