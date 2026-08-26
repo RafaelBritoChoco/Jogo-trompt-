@@ -27,11 +27,70 @@ jobs:
           python3 -m py_compile scripts/apply-arc-fixes.py
           python3 scripts/apply-arc-fixes.py
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/arc-pong-audit.cjs")
+          text = path.read_text(encoding="utf-8")
+
+          dash_old = """    await waitState(
+              page,
+              () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
+              `${engine}: dash scenario did not enter play`,
+            );
+            const dashEnergyBefore"""
+          dash_new = """    await waitState(
+              page,
+              () => {
+                const diagnostics = window.__ARC_PONG_DIAGNOSTICS__;
+                return diagnostics?.state === 'play' && diagnostics.player.energy >= 99;
+              },
+              `${engine}: dash scenario did not publish restored energy`,
+            );
+            const dashEnergyBefore"""
+
+          shield_old = """    await waitState(
+              page,
+              () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
+              `${engine}: shield scenario did not enter play`,
+            );
+            await activate(page, touch, '#shieldBtn', 'KeyE');"""
+          shield_new = """    await waitState(
+              page,
+              () => {
+                const diagnostics = window.__ARC_PONG_DIAGNOSTICS__;
+                return diagnostics?.state === 'play' && diagnostics.player.energy >= 99;
+              },
+              `${engine}: shield scenario did not publish restored energy`,
+            );
+            await activate(page, touch, '#shieldBtn', 'KeyE');"""
+
+          delta_old = "`${engine}: dash energy delta was too small`,"
+          delta_new = "`${engine}: dash energy delta was too small (${dashEnergyBefore} -> ${dashEnergyAfter})`,"
+
+          if "dash scenario did not publish restored energy" not in text:
+              if dash_old not in text:
+                  raise SystemExit("Dash synchronization target not found")
+              text = text.replace(dash_old, dash_new, 1)
+
+          if "shield scenario did not publish restored energy" not in text:
+              if shield_old not in text:
+                  raise SystemExit("Shield synchronization target not found")
+              text = text.replace(shield_old, shield_new, 1)
+
+          if "dash energy delta was too small (${dashEnergyBefore}" not in text:
+              if delta_old not in text:
+                  raise SystemExit("Dash diagnostic message target not found")
+              text = text.replace(delta_old, delta_new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
           if ! git diff --quiet -- index.html tests/arc-pong-audit.cjs; then
             git config user.name "ARC Pong Gauntlet Auditor"
             git config user.email "actions@users.noreply.github.com"
             git add index.html tests/arc-pong-audit.cjs
-            git commit -m "fix: isolate abilities and clear player sightline [skip ci]"
+            git commit -m "test: synchronize ability energy snapshots [skip ci]"
             git push origin HEAD:arc-pong-arena-v2
           fi
 
@@ -48,6 +107,7 @@ jobs:
           grep -q "visualMode:isPlayer?'hologram-outline':'solid'" index.html
           grep -q "new THREE.TorusGeometry(w.radius\*.82" index.html
           grep -q "dashEnergyBefore" tests/arc-pong-audit.cjs
+          grep -q "dash scenario did not publish restored energy" tests/arc-pong-audit.cjs
           grep -q "playerVisuals = await page.evaluate" tests/arc-pong-audit.cjs
           grep -q "parryAtRealImpact" tests/arc-pong-audit.cjs
           grep -q "simulation clock stalled" tests/arc-pong-audit.cjs
