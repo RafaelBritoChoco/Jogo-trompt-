@@ -1,0 +1,31 @@
+name: Audit Pong public route
+
+on:
+  push:
+    branches:
+      - pong-3d-ipad-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for CDN propagation
+        run: sleep 20
+
+      - name: Verify immutable public HTML route
+        env:
+          GAME_URL: https://rawcdn.githack.com/RafaelBritoChoco/Jogo-trompt-/729131567422664b2c8e2548d3634bffde3bc1f9/index.html
+        run: |
+          set -euo pipefail
+          curl --retry 6 --retry-delay 5 --retry-all-errors -fsSL -D headers.txt "$GAME_URL" -o game.html
+          tr -d '\r' < headers.txt > normalized-headers.txt
+          grep -qi '^content-type: text/html' normalized-headers.txt
+          grep -q 'NEON PONG 3D' game.html
+          grep -q 'window.__PONG__' game.html
+          test "$(wc -c < game.html)" -gt 10000
+          echo "Public route verified: $(wc -c < game.html) bytes"
