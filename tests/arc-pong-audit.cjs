@@ -224,8 +224,11 @@ async function runCase(browser, engine, viewport, touch) {
     });
     await waitState(
       page,
-      () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
-      `${engine}: dash scenario did not enter play`,
+      () => {
+        const diagnostics = window.__ARC_PONG_DIAGNOSTICS__;
+        return diagnostics?.state === 'play' && diagnostics.player.energy >= 99;
+      },
+      `${engine}: dash scenario did not publish restored energy`,
     );
     const dashEnergyBefore = await page.evaluate(
       () => window.__ARC_PONG_DIAGNOSTICS__.player.energy,
@@ -244,7 +247,7 @@ async function runCase(browser, engine, viewport, touch) {
     );
     assert(
       dashEnergyBefore - dashEnergyAfter > 20,
-      `${engine}: dash energy delta was too small`,
+      `${engine}: dash energy delta was too small (${dashEnergyBefore} -> ${dashEnergyAfter})`,
     );
 
     await page.evaluate(() => {
@@ -253,8 +256,11 @@ async function runCase(browser, engine, viewport, touch) {
     });
     await waitState(
       page,
-      () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
-      `${engine}: shield scenario did not enter play`,
+      () => {
+        const diagnostics = window.__ARC_PONG_DIAGNOSTICS__;
+        return diagnostics?.state === 'play' && diagnostics.player.energy >= 99;
+      },
+      `${engine}: shield scenario did not publish restored energy`,
     );
     await activate(page, touch, '#shieldBtn', 'KeyE');
     await waitState(
