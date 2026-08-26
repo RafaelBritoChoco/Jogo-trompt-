@@ -95,7 +95,12 @@ async function runCase(browser, engine, viewport, touch) {
       `${engine}: match did not enter play`,
     );
 
-    const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
+    const livenessStart = await page.evaluate(() => ({
+    frame: window.__ARC_PONG_DIAGNOSTICS__.frame,
+    simTime: window.__ARC_PONG_DIAGNOSTICS__.simTime,
+  }));
+
+  const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
     await page.waitForTimeout(420);
     const afterBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
     assert(Math.abs(afterBall.z - beforeBall.z) > 1, `${engine}: ball did not move in depth`);
@@ -226,7 +231,14 @@ async function runCase(browser, engine, viewport, touch) {
     }
 
     const diagnostics = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__);
-    assert(diagnostics.frame > 120, `${engine}: too few frames advanced`);
+    assert(
+    diagnostics.frame - livenessStart.frame > 20,
+    `${engine}: render loop stalled`,
+  );
+  assert(
+    diagnostics.simTime - livenessStart.simTime > 0.8,
+    `${engine}: simulation clock stalled`,
+  );
     assert(
       diagnostics.errors.length === 0,
       `${engine}: diagnostic errors ${diagnostics.errors.join(' | ')}`,
