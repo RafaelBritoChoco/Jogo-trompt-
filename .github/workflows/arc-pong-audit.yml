@@ -29,55 +29,44 @@ jobs:
           path = Path('tests/arc-pong-audit.cjs')
           text = path.read_text()
 
-          start_anchor = """    await waitState(
-              page,
-              () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
-              `${engine}: match did not enter play`,
-            );
-
-            const beforeBall"""
-          start_replacement = """    await waitState(
-              page,
-              () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
-              `${engine}: match did not enter play`,
-            );
-
-            const livenessStart = await page.evaluate(() => ({
+          before_ball = "    const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));"
+          liveness_block = """    const livenessStart = await page.evaluate(() => ({
               frame: window.__ARC_PONG_DIAGNOSTICS__.frame,
               simTime: window.__ARC_PONG_DIAGNOSTICS__.simTime,
             }));
 
-            const beforeBall"""
+            const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));"""
 
-          end_anchor = """    const diagnostics = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__);
-            assert(diagnostics.frame > 120, `${engine}: too few frames advanced`);
-            assert("""
-          end_replacement = """    const diagnostics = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__);
-            assert(
+          absolute_assert = "    assert(diagnostics.frame > 120, `${engine}: too few frames advanced`);"
+          relative_asserts = """    assert(
               diagnostics.frame - livenessStart.frame > 20,
               `${engine}: render loop stalled`,
             );
             assert(
               diagnostics.simTime - livenessStart.simTime > 0.8,
               `${engine}: simulation clock stalled`,
-            );
-            assert("""
+            );"""
 
-          if start_anchor not in text:
-              raise SystemExit('Start liveness anchor not found')
-          if end_anchor not in text:
-              raise SystemExit('End liveness anchor not found')
+          if 'const livenessStart = await page.evaluate' not in text:
+              if before_ball not in text:
+                  raise SystemExit('Single-line beforeBall anchor not found')
+              text = text.replace(before_ball, liveness_block, 1)
 
-          text = text.replace(start_anchor, start_replacement, 1)
-          text = text.replace(end_anchor, end_replacement, 1)
+          if 'simulation clock stalled' not in text:
+              if absolute_assert not in text:
+                  raise SystemExit('Absolute frame assertion not found')
+              text = text.replace(absolute_assert, relative_asserts, 1)
+
           path.write_text(text)
           PY
 
-          git config user.name 'ARC Pong Gauntlet Auditor'
-          git config user.email 'actions@users.noreply.github.com'
-          git add tests/arc-pong-audit.cjs
-          git commit -m 'test: verify render and simulation liveness relatively [skip ci]'
-          git push origin HEAD:arc-pong-arena-v2
+          if ! git diff --quiet -- tests/arc-pong-audit.cjs; then
+            git config user.name 'ARC Pong Gauntlet Auditor'
+            git config user.email 'actions@users.noreply.github.com'
+            git add tests/arc-pong-audit.cjs
+            git commit -m 'test: verify render and simulation liveness relatively [skip ci]'
+            git push origin HEAD:arc-pong-arena-v2
+          fi
 
       - name: Static contract checks
         run: |
