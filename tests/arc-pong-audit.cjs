@@ -12,13 +12,36 @@ function assert(value, message) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+async function readDiagnostics(page) {
+  return page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__ ?? null).catch(() => null);
+}
+
 async function waitState(page, predicate, message, timeout = 8000) {
   try {
     await page.waitForFunction(predicate, null, { timeout });
   } catch (error) {
-    const diagnostics = await page
-      .evaluate(() => window.__ARC_PONG_DIAGNOSTICS__ ?? null)
-      .catch(() => null);
+    const diagnostics = await readDiagnostics(page);
+    throw new Error(`${message}; diagnostics=${JSON.stringify(diagnostics)}`);
+  }
+}
+
+async function waitForDepthMotion(page, initialZ, message, timeout = 2500) {
+  try {
+    await page.waitForFunction(
+      ({ startZ, minimumTravel }) => {
+        const ball = window.__ARC_PONG_DIAGNOSTICS__?.ball;
+        return (
+          ball &&
+          Math.abs(ball.z - startZ) > minimumTravel &&
+          Number.isFinite(ball.speed) &&
+          ball.speed > 10
+        );
+      },
+      { startZ: initialZ, minimumTravel: 1 },
+      { timeout },
+    );
+  } catch (error) {
+    const diagnostics = await readDiagnostics(page);
     throw new Error(`${message}; diagnostics=${JSON.stringify(diagnostics)}`);
   }
 }
@@ -30,19 +53,33 @@ async function activate(page, touch, selector, key) {
 }
 
 async function parryAtRealImpact(page, touch) {
-  await page.waitForFunction(
-    plane => {
-      const ball = window.__ARC_PONG_DIAGNOSTICS__?.ball;
-      if (!ball || ball.vz <= 0) return false;
-      const timeToImpact = (plane - ball.z) / ball.vz;
-      return timeToImpact > 0 && timeToImpact < 0.095;
-    },
-    PLAYER_HIT_PLANE_Z,
-    { timeout: 3000 },
-  );
+  try {
+    await page.waitForFunction(
+      plane => {
+        const ball = window.__ARC_PONG_DIAGNOSTICS__?.ball;
+        if (!ball || ball.vz <= 0) return false;
+        const timeToImpact = (plane - ball.z) / ball.vz;
+        return timeToImpact > 0 && timeToImpact < 0.095;
+      },
+      PLAYER_HIT_PLANE_Z,
+      { timeout: 3000 },
+    );
+  } catch (error) {
+    const diagnostics = await readDiagnostics(page);
+    throw new Error(`ball never reached the parry window; diagnostics=${JSON.stringify(diagnostics)}`);
+  }
 
   if (touch) await page.locator('#parryBtn').tap();
   else await page.keyboard.down('Space');
+}
+
+function boxesOverlap(a, b) {
+  return !(
+    a.x + a.width <= b.x ||
+    b.x + b.width <= a.x ||
+    a.y + a.height <= b.y ||
+    b.y + b.height <= a.y
+  );
 }
 
 async function runCase(browser, engine, viewport, touch) {
@@ -96,14 +133,13 @@ async function runCase(browser, engine, viewport, touch) {
     );
 
     const livenessStart = await page.evaluate(() => ({
-    frame: window.__ARC_PONG_DIAGNOSTICS__.frame,
-    simTime: window.__ARC_PONG_DIAGNOSTICS__.simTime,
-  }));
+      frame: window.__ARC_PONG_DIAGNOSTICS__.frame,
+      simTime: window.__ARC_PONG_DIAGNOSTICS__.simTime,
+    }));
 
-  const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
-    await page.waitForTimeout(420);
+    const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
+    await waitForDepthMotion(page, beforeBall.z, `${engine}: ball did not move in depth`);
     const afterBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
-    assert(Math.abs(afterBall.z - beforeBall.z) > 1, `${engine}: ball did not move in depth`);
     assert(afterBall.speed > 10, `${engine}: ball speed invalid`);
 
     const beforePlayer = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.player }));
@@ -217,28 +253,20 @@ async function runCase(browser, engine, viewport, touch) {
       }
       for (let i = 0; i < 4; i += 1) {
         for (let j = i + 1; j < 4; j += 1) {
-          const a = buttons[i].box;
-          const b = buttons[j].box;
-          const overlap = !(
-            a.x + a.width <= b.x ||
-            b.x + b.width <= a.x ||
-            a.y + a.height <= b.y ||
-            b.y + b.height <= a.y
-          );
-          assert(!overlap, `${engine}: action buttons overlap`);
+          assert(!boxesOverlap(buttons[i].box, buttons[j].box), `${engine}: action buttons overlap`);
         }
       }
     }
 
-    const diagnostics = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__);
+    const diagnostics = await readDiagnostics(page);
     assert(
-    diagnostics.frame - livenessStart.frame > 20,
-    `${engine}: render loop stalled`,
-  );
-  assert(
-    diagnostics.simTime - livenessStart.simTime > 0.8,
-    `${engine}: simulation clock stalled`,
-  );
+      diagnostics.frame - livenessStart.frame > 20,
+      `${engine}: render loop stalled`,
+    );
+    assert(
+      diagnostics.simTime - livenessStart.simTime > 0.8,
+      `${engine}: simulation clock stalled`,
+    );
     assert(
       diagnostics.errors.length === 0,
       `${engine}: diagnostic errors ${diagnostics.errors.join(' | ')}`,
