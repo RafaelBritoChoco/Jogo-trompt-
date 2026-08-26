@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "tested_at": "2026-08-26T21:07:19Z",
+  "url": "https://fine-alto-x4ya7.shipped.page/",
+  "engine": "WebKit",
+  "viewport": "820x1180",
+  "profile": "iPad Safari-like user agent",
+  "verified_behaviors": [
+    "page loaded as executable HTML",
+    "self-test reached pass state",
+    "start button visible and functional",
+    "ball moved after start",
+    "pause and resume worked",
+    "touch control moved the player paddle",
+    "no page-level JavaScript errors were captured"
+  ],
+  "physical_device_test": "not performed"
+}
