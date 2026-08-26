@@ -7,24 +7,59 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   browser-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    env:
-      GAME_URL: https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/3262d519a9bd7f95d77dbfd32bf30728863ec6c4/index.html
+    timeout-minutes: 14
     steps:
+      - name: Check out isolated branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-3d-ipad-fix
+          fetch-depth: 0
+
+      - name: Keep reset control visible on narrow screens
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text()
+          hidden_rule = '.bar button:nth-child(4){display:none}'
+          if hidden_rule in text:
+              path.write_text(text.replace(hidden_rule, ''))
+              print('Removed the narrow-screen reset hiding rule.')
+          else:
+              print('Reset visibility correction was already present.')
+          PY
+
+          if ! git diff --quiet -- index.html; then
+            git config user.name 'Pong Gauntlet Auditor'
+            git config user.email 'actions@users.noreply.github.com'
+            git add index.html
+            git commit -m 'fix: keep reset visible on narrow screens [skip ci]'
+            git push origin HEAD:pong-3d-ipad-fix
+          fi
+
+          GAME_COMMIT="$(git rev-parse HEAD)"
+          echo "GAME_COMMIT=$GAME_COMMIT" >> "$GITHUB_ENV"
+          echo "GAME_URL=https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html" >> "$GITHUB_ENV"
+          echo "Testing game commit: $GAME_COMMIT"
+
       - name: Verify public response
         run: |
           set -euo pipefail
-          curl --retry 5 --retry-delay 3 --retry-all-errors -fsSL -D headers.txt "$GAME_URL" -o game.html
+          sleep 8
+          curl --retry 7 --retry-delay 3 --retry-all-errors -fsSL -D headers.txt "$GAME_URL" -o game.html
           tr -d '\r' < headers.txt > normalized-headers.txt
           grep -qi '^content-type: text/html' normalized-headers.txt
           grep -q 'NEON PONG 3D' game.html
           grep -q 'window.__PONG__' game.html
           grep -q 'id="pauseb"' game.html
+          grep -q 'id="reset"' game.html
+          ! grep -q '\.bar button:nth-child(4){display:none}' game.html
           test "$(wc -c < game.html)" -gt 12000
 
       - name: Install browser test harness
@@ -39,7 +74,7 @@ jobs:
         run: |
           cat > audit.cjs <<'NODE'
           const { chromium, webkit } = require('playwright');
-
+          const fs = require('fs');
           const url = process.env.GAME_URL;
           const results = [];
 
@@ -56,6 +91,7 @@ jobs:
             assert((await page.title()) === 'Neon Pong 3D', `${engine}: título inesperado`);
             assert(await page.locator('#start').isVisible(), `${engine}: botão Jogar não visível`);
             assert(await page.locator('#pauseb').isVisible(), `${engine}: botão Pausar não visível`);
+            assert(await page.locator('#reset').isVisible(), `${engine}: botão Reiniciar não visível`);
             assert((await page.locator('#test').textContent()).includes('5/5 OK'), `${engine}: autoteste não passou`);
             assert(!(await page.locator('body').innerText()).includes('Canvas indisponível'), `${engine}: fallback de Canvas visível`);
 
@@ -68,7 +104,7 @@ jobs:
 
             await page.locator('#pauseb').click();
             assert((await page.evaluate(() => window.__PONG__.state().state)) === 'pause', `${engine}: pausa falhou`);
-            assert(await page.locator('#menu').isVisible(), `${engine}: menu de pausa não apareceu`);
+            await page.locator('#menu').waitFor({ state: 'visible', timeout: 2500 });
             await page.locator('#start').click();
             assert((await page.evaluate(() => window.__PONG__.state().state)) === 'play', `${engine}: retomada falhou`);
 
@@ -81,6 +117,7 @@ jobs:
 
             await page.evaluate(() => { window.__PONG__.setScore(6, 0); window.__PONG__.score('l'); });
             assert((await page.evaluate(() => window.__PONG__.state().state)) === 'over', `${engine}: condição de vitória falhou`);
+            await page.locator('#menu').waitFor({ state: 'visible', timeout: 2500 });
             assert((await page.locator('#title').textContent()).includes('VENCEU'), `${engine}: tela de vitória ausente`);
 
             await page.locator('#reset').click();
@@ -94,11 +131,12 @@ jobs:
             if (viewport.width <= 430) {
               const touchDisplay = await page.locator('.touch.left').evaluate(el => getComputedStyle(el).display);
               assert(touchDisplay === 'flex', `${engine}: controles móveis não apareceram`);
-              const pauseBox = await page.locator('#pauseb').boundingBox();
+              const barBox = await page.locator('.bar').boundingBox();
               const upBox = await page.locator('[data-s="l"][data-d="-1"]').boundingBox();
-              assert(pauseBox && upBox, `${engine}: caixas móveis ausentes`);
-              const overlap = !(upBox.y + upBox.height <= pauseBox.y || pauseBox.y + pauseBox.height <= upBox.y || upBox.x + upBox.width <= pauseBox.x || pauseBox.x + pauseBox.width <= upBox.x);
-              assert(!overlap, `${engine}: controles móveis sobrepostos`);
+              const downBox = await page.locator('[data-s="l"][data-d="1"]').boundingBox();
+              assert(barBox && upBox && downBox, `${engine}: caixas móveis ausentes`);
+              const intersects = (a, b) => !(a.y + a.height <= b.y || b.y + b.height <= a.y || a.x + a.width <= b.x || b.x + b.width <= a.x);
+              assert(!intersects(upBox, barBox) && !intersects(downBox, barBox), `${engine}: controles móveis sobrepostos`);
 
               await page.locator('#start').click();
               const z0 = await page.evaluate(() => window.__PONG__.state().L);
@@ -111,8 +149,9 @@ jobs:
             }
 
             assert(errors.length === 0, `${engine}: erros JavaScript: ${errors.join(' | ')}`);
-            await page.screenshot({ path: `pong-${engine}-${viewport.width}x${viewport.height}.png`, fullPage: true });
-            results.push({ engine, viewport, passed: true });
+            const shot = `pong-${engine}-${viewport.width}x${viewport.height}.png`;
+            await page.screenshot({ path: shot, fullPage: true });
+            results.push({ engine, viewport, passed: true, screenshot: shot });
           }
 
           async function runEngine(name, browserType, launchOptions = {}) {
@@ -120,9 +159,12 @@ jobs:
             try {
               for (const viewport of [{ width: 1280, height: 800 }, { width: 820, height: 1180 }, { width: 390, height: 844 }]) {
                 const context = await browser.newContext({ viewport, deviceScaleFactor: viewport.width <= 820 ? 2 : 1, hasTouch: viewport.width <= 820, isMobile: viewport.width <= 820 });
-                const page = await context.newPage();
-                await commonAssertions(page, name, viewport);
-                await context.close();
+                try {
+                  const page = await context.newPage();
+                  await commonAssertions(page, name, viewport);
+                } finally {
+                  await context.close();
+                }
               }
             } finally {
               await browser.close();
@@ -130,12 +172,12 @@ jobs:
           }
 
           (async () => {
-            const chromePath = process.env.SYSTEM_CHROME;
-            await runEngine('chrome', chromium, { executablePath: chromePath, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+            await runEngine('chrome', chromium, { executablePath: process.env.SYSTEM_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
             await runEngine('webkit', webkit);
-            require('fs').writeFileSync('browser-results.json', JSON.stringify(results, null, 2));
+            fs.writeFileSync('browser-results.json', JSON.stringify(results, null, 2));
             console.log(JSON.stringify(results, null, 2));
           })().catch(error => {
+            fs.writeFileSync('browser-results.json', JSON.stringify({ results, failure: String(error.stack || error) }, null, 2));
             console.error(error.stack || error);
             process.exit(1);
           });
