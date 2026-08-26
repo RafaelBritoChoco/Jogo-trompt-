@@ -1,0 +1,240 @@
+name: ARC Pong browser gauntlet
+
+on:
+  push:
+    branches:
+      - arc-pong-arena-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-gauntlet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out arena branch
+        uses: actions/checkout@v4
+        with:
+          ref: arc-pong-arena-v2
+
+      - name: Static contract checks
+        run: |
+          set -euo pipefail
+          grep -q 'ARC PONG — Neon Ricochet' index.html
+          grep -q '__ARC_PONG_DIAGNOSTICS__' index.html
+          grep -q 'three@0.185.1' index.html
+          grep -q 'RIFT GATE' index.html
+          grep -q 'perfectWindow' index.html
+          test "$(wc -c < index.html)" -gt 50000
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text()
+          modules = re.findall(r'<script type="module">\s*(.*?)\s*</script>', html, re.S)
+          assert len(modules) == 1
+          Path('/tmp/arc-pong.mjs').write_text(modules[0])
+          PY
+          node --check /tmp/arc-pong.mjs
+
+      - name: Install browser harness
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
+
+      - name: Run Chrome and WebKit gameplay tests
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+        run: |
+          cat > audit.cjs <<'NODE'
+          const { chromium, webkit } = require('playwright');
+          const fs = require('fs');
+          const { spawn } = require('child_process');
+          const BASE = 'http://127.0.0.1:8765/index.html';
+          const results = [];
+
+          function assert(value, message) {
+            if (!value) throw new Error(message);
+          }
+
+          const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+          async function waitState(page, predicate, message, timeout = 8000) {
+            try {
+              await page.waitForFunction(predicate, null, { timeout });
+            } catch (error) {
+              const diag = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__ ?? null).catch(() => null);
+              throw new Error(`${message}; diagnostics=${JSON.stringify(diag)}`);
+            }
+          }
+
+          async function activate(page, touch, selector, key) {
+            if (touch) await page.locator(selector).tap();
+            else if (key) await page.keyboard.press(key);
+            else await page.locator(selector).click();
+          }
+
+          async function runCase(browser, engine, viewport, touch) {
+            const context = await browser.newContext({
+              viewport,
+              deviceScaleFactor: touch ? 2 : 1,
+              hasTouch: touch,
+              isMobile: touch,
+              locale: 'pt-BR',
+            });
+            const page = await context.newPage();
+            const errors = [];
+            const failedRequests = [];
+            page.on('pageerror', error => errors.push(`page:${error.message}`));
+            page.on('console', message => {
+              if (message.type() === 'error') errors.push(`console:${message.text()}`);
+            });
+            page.on('requestfailed', request => failedRequests.push(`${request.url()}::${request.failure()?.errorText ?? 'failed'}`));
+
+            await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await waitState(page, () => window.__ARC_PONG_BOOTED__ === true, `${engine} ${viewport.width}: engine did not boot`, 20000);
+            const selfTests = await page.evaluate(() => window.__ARC_PONG_SELFTEST__);
+            assert(Array.isArray(selfTests) && selfTests.length === 7 && selfTests.every(t => t.pass), `${engine}: self-tests failed`);
+            assert(await page.locator('#startBtn').isVisible(), `${engine}: start button hidden`);
+            assert(!(await page.locator('#fatal').isVisible()), `${engine}: fatal screen visible`);
+
+            const menuShot = `evidence/${engine}-${viewport.width}x${viewport.height}-menu.png`;
+            await page.screenshot({ path: menuShot, fullPage: true });
+            await (touch ? page.locator('#startBtn').tap() : page.locator('#startBtn').click());
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play', `${engine}: match did not enter play`);
+
+            const beforeBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
+            await page.waitForTimeout(420);
+            const afterBall = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.ball }));
+            assert(Math.abs(afterBall.z - beforeBall.z) > 1, `${engine}: ball did not move in depth`);
+            assert(afterBall.speed > 10, `${engine}: ball speed invalid`);
+
+            const beforePlayer = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.player }));
+            const box = await page.locator('#game').boundingBox();
+            assert(box, `${engine}: canvas box missing`);
+            const targetX = box.x + box.width * .68;
+            const targetY = box.y + box.height * .66;
+            if (touch) await page.touchscreen.tap(targetX, targetY);
+            else await page.mouse.click(targetX, targetY);
+            await waitState(page, () => {
+              const p = window.__ARC_PONG_DIAGNOSTICS__?.player;
+              return p && (Math.abs(p.x) > 1 || Math.abs(p.y) > 1);
+            }, `${engine}: pointer/touch did not move paddle`);
+            const afterPlayer = await page.evaluate(() => ({ ...window.__ARC_PONG_DIAGNOSTICS__.player }));
+            assert(Math.hypot(afterPlayer.x - beforePlayer.x, afterPlayer.y - beforePlayer.y) > 1, `${engine}: paddle movement too small`);
+
+            const weaponBefore = afterPlayer.weapon;
+            await activate(page, touch, '#weaponBtn', 'KeyQ');
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.player.weapon !== 'blade', `${engine}: weapon did not cycle`);
+            const weaponAfter = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__.player.weapon);
+            assert(weaponAfter !== weaponBefore, `${engine}: weapon unchanged`);
+
+            await page.evaluate(() => window.__ARC_PONG_TEST_HOOKS__.setEnergy(100));
+            await activate(page, touch, '#dashBtn', 'ShiftLeft');
+            await page.waitForTimeout(80);
+            const dashEnergy = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__.player.energy);
+            assert(dashEnergy < 76, `${engine}: dash did not consume energy`);
+
+            await page.evaluate(() => window.__ARC_PONG_TEST_HOOKS__.setEnergy(100));
+            await activate(page, touch, '#shieldBtn', 'KeyE');
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.player.shield === 1, `${engine}: shield did not activate`);
+
+            await page.evaluate(() => {
+              window.__ARC_PONG_TEST_HOOKS__.setWeapon(0);
+              window.__ARC_PONG_TEST_HOOKS__.approachPlayer(0, 0, .19);
+            });
+            await page.waitForTimeout(95);
+            if (touch) {
+              await page.locator('#parryBtn').dispatchEvent('pointerdown', { pointerId: 17, pointerType: 'touch', isPrimary: true, bubbles: true });
+            } else {
+              await page.keyboard.down('Space');
+            }
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.lastEvent === 'player-perfect', `${engine}: perfect parry did not trigger`, 3000);
+            if (touch) await page.locator('#parryBtn').dispatchEvent('pointerup', { pointerId: 17, pointerType: 'touch', isPrimary: true, bubbles: true });
+            else await page.keyboard.up('Space');
+
+            await page.evaluate(() => {
+              window.__ARC_PONG_TEST_HOOKS__.setWeapon(2);
+              window.__ARC_PONG_TEST_HOOKS__.approachPlayer(0, 0, .19);
+            });
+            await page.waitForTimeout(95);
+            if (touch) await page.locator('#parryBtn').dispatchEvent('pointerdown', { pointerId: 21, pointerType: 'touch', isPrimary: true, bubbles: true });
+            else await page.keyboard.down('Space');
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.lastEvent === 'player-catch', `${engine}: orb did not catch ball`, 3000);
+            await page.waitForTimeout(380);
+            if (touch) await page.locator('#parryBtn').dispatchEvent('pointerup', { pointerId: 21, pointerType: 'touch', isPrimary: true, bubbles: true });
+            else await page.keyboard.up('Space');
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.lastEvent === 'player-power-serve', `${engine}: caught ball was not released`);
+
+            await page.keyboard.press('KeyP');
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'pause', `${engine}: pause failed`);
+            assert(await page.locator('#pauseMenu').isVisible(), `${engine}: pause menu hidden`);
+            await page.locator('#resumeBtn').click();
+            await waitState(page, () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play', `${engine}: resume failed`);
+
+            if (touch) {
+              const buttons = await Promise.all(['#parryBtn','#dashBtn','#shieldBtn','#weaponBtn'].map(async selector => ({ selector, box: await page.locator(selector).boundingBox() })));
+              for (const entry of buttons) {
+                assert(entry.box, `${engine}: ${entry.selector} missing`);
+                assert(entry.box.x >= 0 && entry.box.y >= 0 && entry.box.x + entry.box.width <= viewport.width + 1 && entry.box.y + entry.box.height <= viewport.height + 1, `${engine}: ${entry.selector} outside viewport`);
+              }
+              for (let i = 0; i < buttons.length; i++) for (let j = i + 1; j < buttons.length; j++) {
+                const a = buttons[i].box, b = buttons[j].box;
+                const overlap = !(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+                assert(!overlap, `${engine}: action buttons overlap`);
+              }
+            }
+
+            const diag = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__);
+            assert(diag.frame > 120, `${engine}: too few frames advanced`);
+            assert(diag.errors.length === 0, `${engine}: diagnostic errors ${diag.errors.join(' | ')}`);
+            assert(errors.length === 0, `${engine}: browser errors ${errors.join(' | ')}`);
+            assert(failedRequests.length === 0, `${engine}: failed requests ${failedRequests.join(' | ')}`);
+
+            const playShot = `evidence/${engine}-${viewport.width}x${viewport.height}-gameplay.png`;
+            await page.screenshot({ path: playShot, fullPage: true });
+            results.push({ engine, viewport, touch, passed: true, weaponAfter, frame: diag.frame, lastEvent: diag.lastEvent, screenshots: [menuShot, playShot] });
+            await context.close();
+          }
+
+          (async () => {
+            fs.mkdirSync('evidence', { recursive: true });
+            const server = spawn('python3', ['-m', 'http.server', '8765', '--bind', '127.0.0.1'], { stdio: ['ignore', fs.openSync('/tmp/server.log', 'w'), fs.openSync('/tmp/server.log', 'a')] });
+            try {
+              await sleep(1200);
+              const chrome = await chromium.launch({ headless: true, executablePath: process.env.SYSTEM_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage','--use-angle=swiftshader'] });
+              try {
+                await runCase(chrome, 'chrome', { width: 1280, height: 800 }, false);
+                await runCase(chrome, 'chrome-touch', { width: 820, height: 1180 }, true);
+              } finally { await chrome.close(); }
+
+              const safari = await webkit.launch({ headless: true });
+              try {
+                await runCase(safari, 'webkit-ipad', { width: 820, height: 1180 }, true);
+                await runCase(safari, 'webkit-phone', { width: 390, height: 844 }, true);
+              } finally { await safari.close(); }
+
+              fs.writeFileSync('evidence/results.json', JSON.stringify(results, null, 2));
+              console.log(JSON.stringify(results, null, 2));
+            } finally {
+              server.kill('SIGTERM');
+            }
+          })().catch(error => {
+            fs.mkdirSync('evidence', { recursive: true });
+            fs.writeFileSync('evidence/failure.txt', String(error.stack || error));
+            console.error(error.stack || error);
+            process.exit(1);
+          });
+          NODE
+          node audit.cjs
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-pong-browser-evidence
+          path: |
+            evidence
+            /tmp/server.log
+          if-no-files-found: ignore
