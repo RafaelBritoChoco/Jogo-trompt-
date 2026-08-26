@@ -173,13 +173,89 @@ async function runCase(browser, engine, viewport, touch) {
     const weaponAfter = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__.player.weapon);
     assert(weaponAfter !== weaponBefore, `${engine}: weapon unchanged`);
 
-    await page.evaluate(() => window.__ARC_PONG_TEST_HOOKS__.setEnergy(100));
-    await activate(page, touch, '#dashBtn', 'ShiftLeft');
-    await page.waitForTimeout(80);
-    const dashEnergy = await page.evaluate(() => window.__ARC_PONG_DIAGNOSTICS__.player.energy);
-    assert(dashEnergy < 76, `${engine}: dash did not consume energy`);
+    const playerVisuals = await page.evaluate(() => {
+      const forms = [];
+      for (const index of [0, 1, 2]) {
+        window.__ARC_PONG_TEST_HOOKS__.setWeapon(index);
+        const meshes = [];
+        window.__ARC_PONG_GAME__.player.mesh.traverse(object => {
+          if (!object.isMesh) return;
+          meshes.push({
+            type: object.geometry?.type ?? 'unknown',
+            opacity: object.material?.opacity ?? 1,
+            depthWrite: object.material?.depthWrite ?? true,
+          });
+        });
+        forms.push({ index, meshes });
+      }
+      return forms;
+    });
+    for (const form of playerVisuals) {
+      assert(
+        form.meshes.every(mesh => mesh.depthWrite === false),
+        `${engine}: player paddle writes to depth buffer`,
+      );
+      if (form.index < 2) {
+        const blockingOpacity = Math.max(
+          0,
+          ...form.meshes
+            .filter(mesh => !['RingGeometry', 'TorusGeometry'].includes(mesh.type))
+            .map(mesh => mesh.opacity),
+        );
+        assert(
+          blockingOpacity <= 0.08,
+          `${engine}: player paddle still blocks the arena`,
+        );
+      } else {
+        assert(
+          form.meshes.some(mesh => mesh.type === 'TorusGeometry'),
+          `${engine}: Orb is not rendered as an open ring`,
+        );
+        assert(
+          !form.meshes.some(mesh => mesh.type === 'SphereGeometry'),
+          `${engine}: Orb still uses a blocking sphere`,
+        );
+      }
+    }
 
-    await page.evaluate(() => window.__ARC_PONG_TEST_HOOKS__.setEnergy(100));
+    await page.evaluate(() => {
+      window.__ARC_PONG_TEST_HOOKS__.setEnergy(100);
+      window.__ARC_PONG_TEST_HOOKS__.approachEnemy(0, 0, 2);
+    });
+    await waitState(
+      page,
+      () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
+      `${engine}: dash scenario did not enter play`,
+    );
+    const dashEnergyBefore = await page.evaluate(
+      () => window.__ARC_PONG_DIAGNOSTICS__.player.energy,
+    );
+    await activate(page, touch, '#dashBtn', 'ShiftLeft');
+    await waitState(
+      page,
+      () => {
+        const player = window.__ARC_PONG_DIAGNOSTICS__?.player;
+        return player && player.energy < 80;
+      },
+      `${engine}: dash did not consume energy`,
+    );
+    const dashEnergyAfter = await page.evaluate(
+      () => window.__ARC_PONG_DIAGNOSTICS__.player.energy,
+    );
+    assert(
+      dashEnergyBefore - dashEnergyAfter > 20,
+      `${engine}: dash energy delta was too small`,
+    );
+
+    await page.evaluate(() => {
+      window.__ARC_PONG_TEST_HOOKS__.setEnergy(100);
+      window.__ARC_PONG_TEST_HOOKS__.approachEnemy(0, 0, 2);
+    });
+    await waitState(
+      page,
+      () => window.__ARC_PONG_DIAGNOSTICS__?.state === 'play',
+      `${engine}: shield scenario did not enter play`,
+    );
     await activate(page, touch, '#shieldBtn', 'KeyE');
     await waitState(
       page,
