@@ -10,111 +10,147 @@ permissions:
   contents: read
 
 jobs:
-  audit-host-candidates:
+  browser-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
-      GAME_COMMIT: 3262d519a9bd7f95d77dbfd32bf30728863ec6c4
+      GAME_URL: https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/3262d519a9bd7f95d77dbfd32bf30728863ec6c4/index.html
     steps:
-      - name: Wait for CDN propagation
-        run: sleep 15
-
-      - name: Test candidate public hosts in a real external Chrome
-        id: hosts
+      - name: Verify public response
         run: |
           set -euo pipefail
-          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
-          test -n "$CHROME"
+          curl --retry 5 --retry-delay 3 --retry-all-errors -fsSL -D headers.txt "$GAME_URL" -o game.html
+          tr -d '\r' < headers.txt > normalized-headers.txt
+          grep -qi '^content-type: text/html' normalized-headers.txt
+          grep -q 'NEON PONG 3D' game.html
+          grep -q 'window.__PONG__' game.html
+          grep -q 'id="pauseb"' game.html
+          test "$(wc -c < game.html)" -gt 12000
 
-          cat > candidates.txt <<EOF
-          githubraw|https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html
-          statically|https://cdn.statically.io/gh/RafaelBritoChoco/Jogo-trompt-@$GAME_COMMIT/index.html
-          htmlpreview|https://htmlpreview.github.io/?https://github.com/RafaelBritoChoco/Jogo-trompt-/blob/$GAME_COMMIT/index.html
-          html-preview|https://html-preview.github.io/?url=https://github.com/RafaelBritoChoco/Jogo-trompt-/blob/$GAME_COMMIT/index.html
-          rawgithack|https://rawcdn.githack.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html
-          EOF
+      - name: Install browser test harness
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
 
-          winner=""
-          : > host-report.txt
-          while IFS='|' read -r name url; do
-            echo "=== $name ===" | tee -a host-report.txt
-            echo "$url" | tee -a host-report.txt
-
-            set +e
-            curl --retry 2 --retry-delay 2 --retry-all-errors -L -A 'Mozilla/5.0' -D "headers-$name.txt" -o "body-$name.html" --max-time 30 "$url"
-            curl_code=$?
-            timeout 40s "$CHROME" \
-              --headless=new \
-              --no-sandbox \
-              --disable-gpu \
-              --disable-dev-shm-usage \
-              --user-data-dir="/tmp/chrome-$name" \
-              --window-size=820,1180 \
-              --virtual-time-budget=8000 \
-              --dump-dom "$url" > "dom-$name.html" 2> "chrome-$name.log"
-            chrome_code=$?
-            set -e
-
-            content_type="$(tr -d '\r' < "headers-$name.txt" 2>/dev/null | grep -i '^content-type:' | tail -1 || true)"
-            body_size="$(wc -c < "body-$name.html" 2>/dev/null || echo 0)"
-            dom_size="$(wc -c < "dom-$name.html" 2>/dev/null || echo 0)"
-            echo "curl=$curl_code chrome=$chrome_code body=$body_size dom=$dom_size type=$content_type" | tee -a host-report.txt
-
-            if grep -q 'data-test="pass"' "dom-$name.html" 2>/dev/null \
-              && grep -q 'TESTES: 5/5 OK' "dom-$name.html" 2>/dev/null \
-              && grep -q 'id="pauseb">Pausar' "dom-$name.html" 2>/dev/null \
-              && ! grep -q 'Canvas indisponível' "dom-$name.html" 2>/dev/null; then
-              echo "RUNTIME_PASS" | tee -a host-report.txt
-              if [ -z "$winner" ]; then
-                winner="$url"
-                winner_name="$name"
-              fi
-            else
-              echo "RUNTIME_FAIL" | tee -a host-report.txt
-              echo "DOM_HEAD=$(head -c 260 "dom-$name.html" 2>/dev/null | tr '\n' ' ')" | tee -a host-report.txt
-              echo "CHROME_TAIL=$(tail -c 260 "chrome-$name.log" 2>/dev/null | tr '\n' ' ')" | tee -a host-report.txt
-            fi
-          done < candidates.txt
-
-          cat host-report.txt
-          test -n "$winner"
-          echo "$winner" > winner-url.txt
-          echo "winner=$winner" >> "$GITHUB_OUTPUT"
-          echo "winner_name=$winner_name" >> "$GITHUB_OUTPUT"
-          echo "Selected host: $winner_name — $winner"
-
-      - name: Verify selected host again in phone viewport
+      - name: Run interaction tests in Chrome and WebKit
         env:
-          WINNER_URL: ${{ steps.hosts.outputs.winner }}
+          SYSTEM_CHROME: /usr/bin/google-chrome
         run: |
-          set -euo pipefail
-          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
-          "$CHROME" \
-            --headless=new \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-dev-shm-usage \
-            --user-data-dir=/tmp/chrome-phone \
-            --window-size=390,844 \
-            --virtual-time-budget=8000 \
-            --dump-dom "$WINNER_URL" > winner-phone-dom.html
-          grep -q 'data-test="pass"' winner-phone-dom.html
-          grep -q 'id="pauseb">Pausar' winner-phone-dom.html
-          grep -q '@media(max-width:430px)' winner-phone-dom.html
-          echo "Phone viewport runtime verified"
+          cat > audit.cjs <<'NODE'
+          const { chromium, webkit } = require('playwright');
 
-      - name: Upload host diagnostics
+          const url = process.env.GAME_URL;
+          const results = [];
+
+          function assert(condition, message) {
+            if (!condition) throw new Error(message);
+          }
+
+          async function commonAssertions(page, engine, viewport) {
+            const errors = [];
+            page.on('pageerror', error => errors.push(String(error)));
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await page.waitForFunction(() => document.documentElement.dataset.test === 'pass', null, { timeout: 15000 });
+
+            assert((await page.title()) === 'Neon Pong 3D', `${engine}: título inesperado`);
+            assert(await page.locator('#start').isVisible(), `${engine}: botão Jogar não visível`);
+            assert(await page.locator('#pauseb').isVisible(), `${engine}: botão Pausar não visível`);
+            assert((await page.locator('#test').textContent()).includes('5/5 OK'), `${engine}: autoteste não passou`);
+            assert(!(await page.locator('body').innerText()).includes('Canvas indisponível'), `${engine}: fallback de Canvas visível`);
+
+            const before = await page.evaluate(() => window.__PONG__.state());
+            await page.locator('#start').click();
+            await page.waitForTimeout(900);
+            const after = await page.evaluate(() => window.__PONG__.state());
+            assert(after.state === 'play', `${engine}: partida não iniciou`);
+            assert(Math.abs(after.B.a - before.B.a) > 0.02 || Math.abs(after.B.z - before.B.z) > 0.02, `${engine}: bola não se moveu`);
+
+            await page.locator('#pauseb').click();
+            assert((await page.evaluate(() => window.__PONG__.state().state)) === 'pause', `${engine}: pausa falhou`);
+            assert(await page.locator('#menu').isVisible(), `${engine}: menu de pausa não apareceu`);
+            await page.locator('#start').click();
+            assert((await page.evaluate(() => window.__PONG__.state().state)) === 'play', `${engine}: retomada falhou`);
+
+            const leftBefore = await page.evaluate(() => window.__PONG__.state().L);
+            await page.keyboard.down('KeyW');
+            await page.waitForTimeout(350);
+            await page.keyboard.up('KeyW');
+            const leftAfter = await page.evaluate(() => window.__PONG__.state().L);
+            assert(Math.abs(leftAfter - leftBefore) > 0.02, `${engine}: controle de teclado não moveu a raquete`);
+
+            await page.evaluate(() => { window.__PONG__.setScore(6, 0); window.__PONG__.score('l'); });
+            assert((await page.evaluate(() => window.__PONG__.state().state)) === 'over', `${engine}: condição de vitória falhou`);
+            assert((await page.locator('#title').textContent()).includes('VENCEU'), `${engine}: tela de vitória ausente`);
+
+            await page.locator('#reset').click();
+            const resetState = await page.evaluate(() => window.__PONG__.state());
+            assert(resetState.state === 'ready' && resetState.lscore === 0 && resetState.rscore === 0, `${engine}: reinício falhou`);
+
+            await page.locator('#mode').click();
+            assert((await page.evaluate(() => window.__PONG__.state().mode)) === 2, `${engine}: modo de dois jogadores falhou`);
+            assert((await page.locator('#rl').textContent()).includes('JOGADOR 2'), `${engine}: rótulo do Jogador 2 falhou`);
+
+            if (viewport.width <= 430) {
+              const touchDisplay = await page.locator('.touch.left').evaluate(el => getComputedStyle(el).display);
+              assert(touchDisplay === 'flex', `${engine}: controles móveis não apareceram`);
+              const pauseBox = await page.locator('#pauseb').boundingBox();
+              const upBox = await page.locator('[data-s="l"][data-d="-1"]').boundingBox();
+              assert(pauseBox && upBox, `${engine}: caixas móveis ausentes`);
+              const overlap = !(upBox.y + upBox.height <= pauseBox.y || pauseBox.y + pauseBox.height <= upBox.y || upBox.x + upBox.width <= pauseBox.x || pauseBox.x + pauseBox.width <= upBox.x);
+              assert(!overlap, `${engine}: controles móveis sobrepostos`);
+
+              await page.locator('#start').click();
+              const z0 = await page.evaluate(() => window.__PONG__.state().L);
+              const up = page.locator('[data-s="l"][data-d="-1"]');
+              await up.dispatchEvent('pointerdown', { pointerId: 9, pointerType: 'touch', isPrimary: true, bubbles: true });
+              await page.waitForTimeout(350);
+              await up.dispatchEvent('pointerup', { pointerId: 9, pointerType: 'touch', isPrimary: true, bubbles: true });
+              const z1 = await page.evaluate(() => window.__PONG__.state().L);
+              assert(Math.abs(z1 - z0) > 0.02, `${engine}: botão tátil não moveu a raquete`);
+            }
+
+            assert(errors.length === 0, `${engine}: erros JavaScript: ${errors.join(' | ')}`);
+            await page.screenshot({ path: `pong-${engine}-${viewport.width}x${viewport.height}.png`, fullPage: true });
+            results.push({ engine, viewport, passed: true });
+          }
+
+          async function runEngine(name, browserType, launchOptions = {}) {
+            const browser = await browserType.launch({ headless: true, ...launchOptions });
+            try {
+              for (const viewport of [{ width: 1280, height: 800 }, { width: 820, height: 1180 }, { width: 390, height: 844 }]) {
+                const context = await browser.newContext({ viewport, deviceScaleFactor: viewport.width <= 820 ? 2 : 1, hasTouch: viewport.width <= 820, isMobile: viewport.width <= 820 });
+                const page = await context.newPage();
+                await commonAssertions(page, name, viewport);
+                await context.close();
+              }
+            } finally {
+              await browser.close();
+            }
+          }
+
+          (async () => {
+            const chromePath = process.env.SYSTEM_CHROME;
+            await runEngine('chrome', chromium, { executablePath: chromePath, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+            await runEngine('webkit', webkit);
+            require('fs').writeFileSync('browser-results.json', JSON.stringify(results, null, 2));
+            console.log(JSON.stringify(results, null, 2));
+          })().catch(error => {
+            console.error(error.stack || error);
+            process.exit(1);
+          });
+          NODE
+          node audit.cjs
+
+      - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pong-host-diagnostics
+          name: pong-browser-evidence
           path: |
-            candidates.txt
-            host-report.txt
-            headers-*.txt
-            body-*.html
-            dom-*.html
-            chrome-*.log
-            winner-url.txt
-            winner-phone-dom.html
+            browser-results.json
+            pong-*.png
+            headers.txt
+            normalized-headers.txt
+            game.html
           if-no-files-found: ignore
