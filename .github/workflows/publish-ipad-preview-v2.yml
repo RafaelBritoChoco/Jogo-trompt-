@@ -1,0 +1,151 @@
+name: Publish iPad preview v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-ipad-preview-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish-test-save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Pong preview
+        uses: actions/checkout@v4
+        with:
+          ref: pong-3d-ipad-fix
+          fetch-depth: 0
+
+      - name: Publish HTML and normalize returned URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW_RESPONSE="$(curl --retry 5 --retry-delay 2 --retry-all-errors -fsS \
+            -X POST 'https://ship.page/deploy?ttl=604800' \
+            -H 'Content-Type: text/html' \
+            --data-binary @index.html)"
+          printf '%s\n' "$RAW_RESPONSE" > publish-response.txt
+          PREVIEW_URL="$(printf '%s' "$RAW_RESPONSE" | grep -Eo 'https://[A-Za-z0-9.-]+/?' | head -n 1 || true)"
+
+          if [ -z "$PREVIEW_URL" ]; then
+            RAW_RESPONSE="$(curl --retry 5 --retry-delay 2 --retry-all-errors -fsS \
+              -X POST 'https://brewpage.app/api/html' \
+              -H 'Content-Type: text/html' \
+              --data-binary @index.html)"
+            printf '%s\n' "$RAW_RESPONSE" >> publish-response.txt
+            PREVIEW_URL="$(printf '%s' "$RAW_RESPONSE" | grep -Eo 'https://brewpage\.app/[A-Za-z0-9_./-]+' | head -n 1 || true)"
+          fi
+
+          test -n "$PREVIEW_URL"
+          PREVIEW_URL="${PREVIEW_URL%/}/"
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          printf '%s\n' "$PREVIEW_URL" > preview-url.txt
+          echo "Published: $PREVIEW_URL"
+
+      - name: Verify the live page response
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 3
+          curl --retry 8 --retry-delay 2 --retry-all-errors -fsSL -D response-headers.txt "$PREVIEW_URL" -o response.html
+          tr -d '\r' < response-headers.txt > normalized-headers.txt
+          grep -qi '^content-type: text/html' normalized-headers.txt
+          grep -q '<title>Neon Pong 3D</title>' response.html
+          grep -q 'window.__PONG__' response.html
+          test "$(wc -c < response.html)" -gt 12000
+
+      - name: Install WebKit harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pw
+          cd /tmp/pw
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps webkit >/dev/null
+
+      - name: Test real gameplay in WebKit using iPad dimensions
+        shell: bash
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: |
+          cat > /tmp/pw/test.cjs <<'NODE'
+          const { webkit } = require('playwright');
+          const fs = require('fs');
+          (async () => {
+            const browser = await webkit.launch({ headless: true });
+            const context = await browser.newContext({
+              viewport: { width: 820, height: 1180 },
+              deviceScaleFactor: 2,
+              hasTouch: true,
+              isMobile: true,
+              userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+            });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', e => errors.push(String(e)));
+            await page.goto(process.env.PREVIEW_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await page.waitForFunction(() => document.documentElement.dataset.test === 'pass', null, { timeout: 15000 });
+            if (!(await page.locator('#start').isVisible())) throw new Error('Jogar não apareceu');
+            if (!(await page.locator('#pauseb').isVisible())) throw new Error('Pausar não apareceu');
+            if (!(await page.locator('#reset').isVisible())) throw new Error('Reiniciar não apareceu');
+            const before = await page.evaluate(() => window.__PONG__.state());
+            await page.locator('#start').click();
+            await page.waitForTimeout(900);
+            const after = await page.evaluate(() => window.__PONG__.state());
+            if (after.state !== 'play') throw new Error('Partida não iniciou');
+            if (Math.abs(after.B.a - before.B.a) <= 0.02 && Math.abs(after.B.z - before.B.z) <= 0.02) throw new Error('Bola não se moveu');
+            await page.locator('#pauseb').click();
+            await page.locator('#menu').waitFor({ state: 'visible', timeout: 3000 });
+            if ((await page.evaluate(() => window.__PONG__.state().state)) !== 'pause') throw new Error('Pausa não funcionou');
+            await page.locator('#start').click();
+            const z0 = await page.evaluate(() => window.__PONG__.state().L);
+            const up = page.locator('[data-s="l"][data-d="-1"]');
+            if (!(await up.isVisible())) throw new Error('Controle de toque não apareceu');
+            await up.dispatchEvent('pointerdown', { pointerId: 5, pointerType: 'touch', isPrimary: true, bubbles: true });
+            await page.waitForTimeout(350);
+            await up.dispatchEvent('pointerup', { pointerId: 5, pointerType: 'touch', isPrimary: true, bubbles: true });
+            const z1 = await page.evaluate(() => window.__PONG__.state().L);
+            if (Math.abs(z1 - z0) <= 0.02) throw new Error('Controle de toque não moveu a raquete');
+            if (errors.length) throw new Error(errors.join(' | '));
+            await page.screenshot({ path: 'ipad-live-preview.png', fullPage: true });
+            fs.writeFileSync('live-test.json', JSON.stringify({ passed: true, url: process.env.PREVIEW_URL, engine: 'WebKit', viewport: '820x1180' }, null, 2));
+            await browser.close();
+          })().catch(error => {
+            fs.writeFileSync('live-test.json', JSON.stringify({ passed: false, url: process.env.PREVIEW_URL, error: String(error.stack || error) }, null, 2));
+            console.error(error.stack || error);
+            process.exit(1);
+          });
+          NODE
+          node /tmp/pw/test.cjs
+
+      - name: Save verified link on preview branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$PREVIEW_URL" > PUBLIC_PREVIEW_URL.txt
+          cp /tmp/pw/live-test.json LIVE_PREVIEW_TEST.json
+          git config user.name 'Pong Preview Publisher'
+          git config user.email 'actions@users.noreply.github.com'
+          git add PUBLIC_PREVIEW_URL.txt LIVE_PREVIEW_TEST.json
+          git commit -m 'chore: save verified live iPad preview [skip ci]'
+          git push origin HEAD:pong-3d-ipad-fix
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-ipad-preview-v2
+          path: |
+            preview-url.txt
+            publish-response.txt
+            PUBLIC_PREVIEW_URL.txt
+            LIVE_PREVIEW_TEST.json
+            ipad-live-preview.png
+            response-headers.txt
+            normalized-headers.txt
+            response.html
