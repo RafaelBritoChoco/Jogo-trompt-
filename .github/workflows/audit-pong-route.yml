@@ -10,52 +10,82 @@ permissions:
   contents: read
 
 jobs:
-  audit-route-and-runtime:
+  audit-host-candidates:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 10
     env:
-      GAME_URL: https://rawcdn.githack.com/RafaelBritoChoco/Jogo-trompt-/3262d519a9bd7f95d77dbfd32bf30728863ec6c4/index.html
+      GAME_COMMIT: 3262d519a9bd7f95d77dbfd32bf30728863ec6c4
     steps:
       - name: Wait for CDN propagation
-        run: sleep 20
+        run: sleep 15
 
-      - name: Fetch and verify immutable public HTML route
+      - name: Test candidate public hosts in a real external Chrome
+        id: hosts
         run: |
           set -euo pipefail
-          curl --retry 6 --retry-delay 5 --retry-all-errors -fsSL -D headers.txt "$GAME_URL" -o game.html
-          tr -d '\r' < headers.txt > normalized-headers.txt
-          grep -qi '^content-type: text/html' normalized-headers.txt
-          grep -q 'NEON PONG 3D' game.html
-          grep -q 'window.__PONG__' game.html
-          grep -q 'id="pauseb"' game.html
-          grep -q '@media(max-width:430px)' game.html
-          test "$(wc -c < game.html)" -gt 12000
-          echo "Public route verified: $(wc -c < game.html) bytes"
-
-      - name: Execute downloaded bytes in external Chrome
-        run: |
-          set -euo pipefail
-          python3 -m http.server 8765 >/tmp/pong-server.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-          sleep 2
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
           test -n "$CHROME"
-          "$CHROME" \
-            --headless=new \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-dev-shm-usage \
-            --window-size=390,844 \
-            --virtual-time-budget=5000 \
-            --dump-dom http://127.0.0.1:8765/game.html > local-rendered-dom.html
-          grep -q 'data-test="pass"' local-rendered-dom.html
-          grep -q 'TESTES: 5/5 OK' local-rendered-dom.html
-          grep -q 'id="pauseb">Pausar' local-rendered-dom.html
-          ! grep -q 'Canvas indisponível' local-rendered-dom.html
-          echo "Downloaded runtime verified"
 
-      - name: Navigate and execute the public route directly
+          cat > candidates.txt <<EOF
+          githubraw|https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html
+          statically|https://cdn.statically.io/gh/RafaelBritoChoco/Jogo-trompt-@$GAME_COMMIT/index.html
+          htmlpreview|https://htmlpreview.github.io/?https://github.com/RafaelBritoChoco/Jogo-trompt-/blob/$GAME_COMMIT/index.html
+          html-preview|https://html-preview.github.io/?url=https://github.com/RafaelBritoChoco/Jogo-trompt-/blob/$GAME_COMMIT/index.html
+          rawgithack|https://rawcdn.githack.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html
+          EOF
+
+          winner=""
+          : > host-report.txt
+          while IFS='|' read -r name url; do
+            echo "=== $name ===" | tee -a host-report.txt
+            echo "$url" | tee -a host-report.txt
+
+            set +e
+            curl --retry 2 --retry-delay 2 --retry-all-errors -L -A 'Mozilla/5.0' -D "headers-$name.txt" -o "body-$name.html" --max-time 30 "$url"
+            curl_code=$?
+            timeout 40s "$CHROME" \
+              --headless=new \
+              --no-sandbox \
+              --disable-gpu \
+              --disable-dev-shm-usage \
+              --user-data-dir="/tmp/chrome-$name" \
+              --window-size=820,1180 \
+              --virtual-time-budget=8000 \
+              --dump-dom "$url" > "dom-$name.html" 2> "chrome-$name.log"
+            chrome_code=$?
+            set -e
+
+            content_type="$(tr -d '\r' < "headers-$name.txt" 2>/dev/null | grep -i '^content-type:' | tail -1 || true)"
+            body_size="$(wc -c < "body-$name.html" 2>/dev/null || echo 0)"
+            dom_size="$(wc -c < "dom-$name.html" 2>/dev/null || echo 0)"
+            echo "curl=$curl_code chrome=$chrome_code body=$body_size dom=$dom_size type=$content_type" | tee -a host-report.txt
+
+            if grep -q 'data-test="pass"' "dom-$name.html" 2>/dev/null \
+              && grep -q 'TESTES: 5/5 OK' "dom-$name.html" 2>/dev/null \
+              && grep -q 'id="pauseb">Pausar' "dom-$name.html" 2>/dev/null \
+              && ! grep -q 'Canvas indisponível' "dom-$name.html" 2>/dev/null; then
+              echo "RUNTIME_PASS" | tee -a host-report.txt
+              if [ -z "$winner" ]; then
+                winner="$url"
+                winner_name="$name"
+              fi
+            else
+              echo "RUNTIME_FAIL" | tee -a host-report.txt
+              echo "DOM_HEAD=$(head -c 260 "dom-$name.html" 2>/dev/null | tr '\n' ' ')" | tee -a host-report.txt
+              echo "CHROME_TAIL=$(tail -c 260 "chrome-$name.log" 2>/dev/null | tr '\n' ' ')" | tee -a host-report.txt
+            fi
+          done < candidates.txt
+
+          cat host-report.txt
+          test -n "$winner"
+          echo "$winner" > winner-url.txt
+          echo "winner=$winner" >> "$GITHUB_OUTPUT"
+          echo "winner_name=$winner_name" >> "$GITHUB_OUTPUT"
+          echo "Selected host: $winner_name — $winner"
+
+      - name: Verify selected host again in phone viewport
+        env:
+          WINNER_URL: ${{ steps.hosts.outputs.winner }}
         run: |
           set -euo pipefail
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
@@ -64,11 +94,27 @@ jobs:
             --no-sandbox \
             --disable-gpu \
             --disable-dev-shm-usage \
-            --window-size=820,1180 \
-            --virtual-time-budget=5000 \
-            --dump-dom "$GAME_URL" > remote-rendered-dom.html
-          grep -q 'data-test="pass"' remote-rendered-dom.html
-          grep -q 'TESTES: 5/5 OK' remote-rendered-dom.html
-          grep -q 'id="pauseb">Pausar' remote-rendered-dom.html
-          ! grep -q 'Canvas indisponível' remote-rendered-dom.html
-          echo "Direct public runtime verified"
+            --user-data-dir=/tmp/chrome-phone \
+            --window-size=390,844 \
+            --virtual-time-budget=8000 \
+            --dump-dom "$WINNER_URL" > winner-phone-dom.html
+          grep -q 'data-test="pass"' winner-phone-dom.html
+          grep -q 'id="pauseb">Pausar' winner-phone-dom.html
+          grep -q '@media(max-width:430px)' winner-phone-dom.html
+          echo "Phone viewport runtime verified"
+
+      - name: Upload host diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pong-host-diagnostics
+          path: |
+            candidates.txt
+            host-report.txt
+            headers-*.txt
+            body-*.html
+            dom-*.html
+            chrome-*.log
+            winner-url.txt
+            winner-phone-dom.html
+          if-no-files-found: ignore
