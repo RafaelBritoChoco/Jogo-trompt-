@@ -45,7 +45,7 @@ jobs:
           ! grep -q 'DUEL0' index.html
           test "$(wc -c < index.html)" -gt 65000
           echo 'b0c58a5947e042a9b8e0bd788840c7f592e7f31bacc4bc73af84a77d77fec57f  index.html' | sha256sum -c -
-          echo '3c4bfebcae158bf20dc1f714efc35761214889a29fbef6249d647b6ff00efd7f  tests/court-pong-audit.cjs' | sha256sum -c -
+          echo '79912629c5dd3edf35a2cc34c470e5a188609ff74a130ba48f7d5313bd8e598c  tests/court-pong-audit.cjs' | sha256sum -c -
           node --check tests/court-pong-audit.cjs
           python3 - <<'PY'
           from pathlib import Path
