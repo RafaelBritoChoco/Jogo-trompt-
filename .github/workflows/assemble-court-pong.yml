@@ -1,0 +1,53 @@
+name: Assemble Court Pong repository rebuild
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - .court-source/**
+      - .github/workflows/assemble-court-pong.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out rebuild branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+          fetch-depth: 0
+
+      - name: Decode verified source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .court-source/bundle.b64.part* | base64 -d > /tmp/court-pong-bundle.tar.gz
+          echo 'bc0384888f057d4e871c45f9224253b4cd90a78f410863c06566b5106a3fe1d0  /tmp/court-pong-bundle.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/court-pong-bundle.tar.gz
+          test -s index.html
+          test -s ATTRIBUTION.md
+          test -s tests/court-pong-audit.cjs
+          test -s .github/workflows/court-pong-audit.yml
+          grep -q 'data-build="court-pong-repo-r2"' index.html
+          grep -q 'PongThreeJS' ATTRIBUTION.md
+          node --check tests/court-pong-audit.cjs
+
+      - name: Commit reconstructed game and browser gauntlet
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Court Pong Repository Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html ATTRIBUTION.md tests/court-pong-audit.cjs .github/workflows/court-pong-audit.yml
+          if git diff --cached --quiet; then
+            echo 'Bundle already matches the branch.'
+          else
+            git commit -m 'feat: replace AI-neon prototype with repository-based Court Pong'
+            git push origin HEAD:pong-curvebreak-rebuild
+          fi
