@@ -1,0 +1,66 @@
+name: Curvebreak v5 layout and gameplay gate
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - 'curvebreak/**'
+      - '.github/workflows/curvebreak-v5-layout-gameplay-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  layout-gameplay-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+
+    steps:
+      - name: Check out Curvebreak branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+
+      - name: Static contract
+        run: |
+          set -euo pipefail
+          test -s curvebreak/v3/index.html
+          test -s curvebreak/v3/fixes.css
+          test -s curvebreak/game.js
+          test -s curvebreak/v2/patch.js
+          test -s curvebreak/tests/gameplay-audit-v4.cjs
+          test -s curvebreak/tests/run-v5-layout-audit.cjs
+          grep -q 'curvebreak-v3' curvebreak/v3/index.html
+          grep -q '__CURVEBREAK_LAYOUT_V3__' curvebreak/v3/index.html
+          grep -q 'pause button overlaps the rival HUD' curvebreak/tests/run-v5-layout-audit.cjs
+          node --check curvebreak/game.js
+          node --check curvebreak/v2/patch.js
+          node --check curvebreak/tests/gameplay-audit-v4.cjs
+          node --check curvebreak/tests/run-v5-layout-audit.cjs
+
+      - name: Install isolated browser harness
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/curvebreak-harness
+          cd /tmp/curvebreak-harness
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
+
+      - name: Run six-browser layout and gameplay matrix
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+          NODE_PATH: /tmp/curvebreak-harness/node_modules
+        run: node curvebreak/tests/run-v5-layout-audit.cjs
+
+      - name: Upload v5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: curvebreak-v5-layout-gameplay-evidence
+          path: |
+            curvebreak/evidence-v5
+            /tmp/curvebreak-server.log
+          if-no-files-found: ignore
