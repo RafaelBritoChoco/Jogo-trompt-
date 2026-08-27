@@ -5,7 +5,6 @@ on:
     branches:
       - pong-curvebreak-rebuild
     paths:
-      - .court-source/**
       - .github/workflows/assemble-court-pong.yml
   workflow_dispatch:
 
@@ -17,109 +16,69 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Check out rebuild branch
+      - name: Check out canonical R4
         uses: actions/checkout@v4
         with:
           ref: pong-curvebreak-rebuild
           fetch-depth: 0
 
-      - name: Rebuild R4 from verified repository base
+      - name: Apply R5 mobile control calibration
         shell: bash
         run: |
           set -euo pipefail
-
-          cat .court-source/bundle.b64.part* | base64 -d > /tmp/court-pong-r2.tar.gz
-          echo 'bc0384888f057d4e871c45f9224253b4cd90a78f410863c06566b5106a3fe1d0  /tmp/court-pong-r2.tar.gz' | sha256sum -c -
-          tar -xzf /tmp/court-pong-r2.tar.gz
-
-          cat .court-source/index-r3.patch.gz.b64.part* | base64 -d > /tmp/index-r3.patch.gz
-          echo '98dec9ee68a5029cbae4df3949013b9d12916754ec47b306b625810258975262  /tmp/index-r3.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/index-r3.patch.gz > /tmp/index-r3.patch
-          patch -p0 < /tmp/index-r3.patch
-
-          base64 -d .court-source/test-r3.patch.gz.b64 > /tmp/test-r3.patch.gz
-          echo '0de266cb6b4eb666ac29563e5318e50c649be559b40ebfaa515b8a19eef90c6a  /tmp/test-r3.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/test-r3.patch.gz > /tmp/test-r3.patch
-          patch -p0 < /tmp/test-r3.patch
+          echo '0c93585c69b82ee1114ae3c4248dd7714c8eacc9ffe6d918aceac13054c307b2  index.html' | sha256sum -c -
+          echo '110573810889ea2ccfab6ffae059af0a82b798d29c3146ea3f303e6b1eabb38f  tests/court-pong-audit.cjs' | sha256sum -c -
 
           python3 - <<'PY'
           from pathlib import Path
 
+          index_path = Path('index.html')
+          html = index_path.read_text(encoding='utf-8')
+          assert 'data-build="court-pong-repo-r4"' in html
+          html = html.replace('data-build="court-pong-repo-r4"', 'data-build="court-pong-repo-r5"', 1)
+
+          before = """        this.playerMarker = document.getElementById('player-marker');\n        this.testBadge = document.getElementById('testBadge');\n        this.startBtn.addEventListener('click', () => this.primaryAction());\n"""
+          after = """        this.playerMarker = document.getElementById('player-marker');\n        this.testBadge = document.getElementById('testBadge');\n        if (this.isCoarse) {\n          this.parryBtn.querySelector('small').textContent = 'SEGURE';\n          this.dashBtn.querySelector('small').textContent = `${CONFIG.dashCost} ENERGIA`;\n          this.shieldBtn.querySelector('small').textContent = `${CONFIG.shieldCost} ENERGIA`;\n          this.weaponBtn.querySelector('small').textContent = 'TOQUE';\n        }\n        this.startBtn.addEventListener('click', () => this.primaryAction());\n"""
+          assert before in html
+          html = html.replace(before, after, 1)
+
+          before = """        const baseY = phonePortrait ? 12 : portrait ? 9 : 5;\n        const baseZ = phonePortrait ? 28 : portrait ? 22.5 : 17.5;\n        const targetZ = phonePortrait ? 6 : portrait ? 4.5 : 1.5;\n"""
+          after = """        const baseY = phonePortrait ? 10.8 : portrait ? 9 : 5;\n        const baseZ = phonePortrait ? 25.5 : portrait ? 22.5 : 17.5;\n        const targetZ = phonePortrait ? 6.2 : portrait ? 4.5 : 1.5;\n"""
+          assert before in html
+          html = html.replace(before, after, 1)
+
+          before = """        this.renderer.setSize(w, h, false);\n        this.renderProbe = 0;\n      }\n"""
+          after = """        this.renderer.setSize(w, h, false);\n        this.renderProbe = 0;\n        if (this.frame > 0) {\n          this.bootReady = false;\n          window.__COURT_PONG_BOOTED__ = false;\n          document.documentElement.dataset.test = 'pending';\n        }\n      }\n"""
+          assert before in html
+          html = html.replace(before, after, 1)
+
+          before = """        if (!this.bootReady && this.frame >= 2) {\n          if (this.sampleRenderedScene() >= 2) {\n            this.bootReady = true;\n            window.__COURT_PONG_BOOTED__ = true;\n            document.documentElement.dataset.test = 'pass';\n          }\n        } else if (this.bootReady && this.frame % 240 === 0) {\n          this.sampleRenderedScene();\n        }\n"""
+          after = """        if (!this.bootReady && this.frame >= 2) {\n          if (this.sampleRenderedScene() >= 2) {\n            this.bootReady = true;\n            window.__COURT_PONG_BOOTED__ = true;\n            document.documentElement.dataset.test = 'pass';\n          }\n        }\n"""
+          assert before in html
+          index_path.write_text(html.replace(before, after, 1), encoding='utf-8')
+
           test_path = Path('tests/court-pong-audit.cjs')
           test_text = test_path.read_text(encoding='utf-8')
 
-          before = """    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n    await assertLayout(page, viewport, id);\n\n    const initial = await diagnostics(page);\n"""
-          after = """    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n\n    const initial = await diagnostics(page);\n"""
+          before = """    userAgent: touch\n      ? 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'\n      : undefined,\n"""
+          after = """    userAgent: touch\n      ? (viewport.width <= 844 && viewport.height <= 844\n        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'\n        : 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1')\n      : undefined,\n"""
           assert before in test_text
           test_text = test_text.replace(before, after, 1)
 
-          before = """    await action(page, touch, '#startBtn');\n    await waitState(page, () => window.__COURT_PONG_DIAGNOSTICS__?.state === 'play', `${id}: match did not enter play`, 6000);\n    const liveStart = await page.evaluate(() => ({\n"""
-          after = """    await action(page, touch, '#startBtn');\n    await waitState(page, () => window.__COURT_PONG_DIAGNOSTICS__?.state === 'play', `${id}: match did not enter play`, 6000);\n    await assertLayout(page, viewport, id);\n    const liveStart = await page.evaluate(() => ({\n"""
+          before = """    assert(!(await page.locator('#fatal').isVisible()), `${id}: fatal screen visible`);\n    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n\n    const initial = await diagnostics(page);\n"""
+          after = """    assert(!(await page.locator('#fatal').isVisible()), `${id}: fatal screen visible`);\n    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n    assert(!(await page.locator('#pauseBtn').isVisible()), `${id}: pause button should be hidden before the duel`);\n    if (touch) {\n      const hints = await page.locator('#actions small').allTextContents();\n      assert(hints.join('|') === 'SEGURE|26 ENERGIA|42 ENERGIA|TOQUE', `${id}: mobile hints are not touch-specific: ${hints.join('|')}`);\n    }\n\n    const initial = await diagnostics(page);\n"""
           assert before in test_text
           test_text = test_text.replace(before, after, 1)
 
-          before = """    const initial = await diagnostics(page);\n    assert(initial.player.visible, `${id}: orange player piece is outside camera view`);\n"""
-          after = """    const initial = await diagnostics(page);\n    assert(initial.renderProbe >= 2, `${id}: WebGL court did not produce visible pixels`);\n    assert(initial.player.visible, `${id}: orange player piece is outside camera view`);\n"""
-          assert before in test_text
-          test_text = test_text.replace(before, after, 1)
-
-          before = """    await movePlayerByPointer(page, touch);\n\n    const weaponBefore = await page.evaluate(() => window.__COURT_PONG_DIAGNOSTICS__.player.weapon);\n"""
-          after = """    await movePlayerByPointer(page, touch);\n    await page.screenshot({ path: `evidence/${id}-live.png`, fullPage: true });\n\n    const weaponBefore = await page.evaluate(() => window.__COURT_PONG_DIAGNOSTICS__.player.weapon);\n"""
-          assert before in test_text
-          test_text = test_text.replace(before, after, 1)
-
-          before = """    await page.screenshot({ path: `evidence/${id}-gameplay.png`, fullPage: true });\n\n    RESULTS.push({\n"""
-          after = """    await page.screenshot({ path: `evidence/${id}-result.png`, fullPage: true });\n\n    RESULTS.push({\n"""
-          assert before in test_text
-          test_text = test_text.replace(before, after, 1)
-
-          before = """      screenshots: [`evidence/${id}-menu.png`, `evidence/${id}-gameplay.png`],\n"""
-          after = """      screenshots: [`evidence/${id}-menu.png`, `evidence/${id}-live.png`, `evidence/${id}-result.png`],\n"""
+          before = """      await runCase(wk, 'webkit-ipad-landscape', { viewport: { width: 1180, height: 820 }, touch: true });\n      await runCase(wk, 'webkit-ipad', { viewport: { width: 820, height: 1180 }, touch: true });\n      await runCase(wk, 'webkit-phone', { viewport: { width: 390, height: 844 }, touch: true });\n"""
+          after = """      await runCase(wk, 'webkit-ipad-landscape', { viewport: { width: 1180, height: 820 }, touch: true });\n      await runCase(wk, 'webkit-ipad', { viewport: { width: 820, height: 1180 }, touch: true });\n      await runCase(wk, 'webkit-phone', { viewport: { width: 390, height: 844 }, touch: true });\n      await runCase(wk, 'webkit-phone-landscape', { viewport: { width: 844, height: 390 }, touch: true });\n"""
           assert before in test_text
           test_path.write_text(test_text.replace(before, after, 1), encoding='utf-8')
-
-          index_path = Path('index.html')
-          html = index_path.read_text(encoding='utf-8')
-          assert 'data-build="court-pong-repo-r3"' in html
-          html = html.replace('data-build="court-pong-repo-r3"', 'data-build="court-pong-repo-r4"', 1)
-
-          before = """    body.menu-open #actions { opacity: 0; visibility: hidden; pointer-events: none; transform: translateX(-50%) translateY(12px); }\n"""
-          after = before + """    body.menu-open #pauseBtn { opacity: 0; visibility: hidden; pointer-events: none; }\n"""
-          assert before in html
-          html = html.replace(before, after, 1)
-
-          before = """        this.lastEvent = 'boot';\n        this.lastHitter = null;\n        this.bumpers = [];\n"""
-          after = """        this.lastEvent = 'boot';\n        this.lastHitter = null;\n        this.bumpers = [];\n        this.renderProbe = 0;\n        this.bootReady = false;\n"""
-          assert before in html
-          html = html.replace(before, after, 1)
-
-          before = """        this.updatePresentation(1);\n        this.runSelfTests();\n        window.addEventListener('resize', () => this.resize());\n        window.__COURT_PONG_BOOTED__ = true;\n        document.documentElement.dataset.test = 'pass';\n        requestAnimationFrame(t => this.loop(t));\n"""
-          after = """        this.updatePresentation(1);\n        this.runSelfTests();\n        window.addEventListener('resize', () => this.resize());\n        requestAnimationFrame(t => this.loop(t));\n"""
-          assert before in html
-          html = html.replace(before, after, 1)
-
-          before = """        this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));\n        this.renderer.setSize(w, h, false);\n      }\n      loop(now) {\n"""
-          after = """        this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));\n        this.renderer.setSize(w, h, false);\n        this.renderProbe = 0;\n      }\n      sampleRenderedScene() {\n        const gl = this.renderer.getContext();\n        const width = gl.drawingBufferWidth;\n        const height = gl.drawingBufferHeight;\n        const points = [[.5,.19],[.32,.34],[.68,.34],[.5,.48],[.5,.62]];\n        const pixel = new Uint8Array(4);\n        let changed = 0;\n        gl.finish();\n        for (const [px, py] of points) {\n          const x = clamp(Math.floor(width * px), 0, Math.max(0, width - 1));\n          const y = clamp(Math.floor(height * py), 0, Math.max(0, height - 1));\n          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);\n          const distance = Math.abs(pixel[0] - 23) + Math.abs(pixel[1] - 33) + Math.abs(pixel[2] - 41);\n          const luminance = pixel[0] + pixel[1] + pixel[2];\n          if (pixel[3] > 0 && luminance > 35 && distance > 28) changed += 1;\n        }\n        this.renderProbe = changed;\n        return changed;\n      }\n      loop(now) {\n"""
-          assert before in html
-          html = html.replace(before, after, 1)
-
-          before = """        this.renderer.render(this.scene, this.camera);\n        this.frame += 1;\n        requestAnimationFrame(t => this.loop(t));\n"""
-          after = """        this.renderer.render(this.scene, this.camera);\n        this.frame += 1;\n        if (!this.bootReady && this.frame >= 2) {\n          if (this.sampleRenderedScene() >= 2) {\n            this.bootReady = true;\n            window.__COURT_PONG_BOOTED__ = true;\n            document.documentElement.dataset.test = 'pass';\n          }\n        } else if (this.bootReady && this.frame % 240 === 0) {\n          this.sampleRenderedScene();\n        }\n        requestAnimationFrame(t => this.loop(t));\n"""
-          assert before in html
-          html = html.replace(before, after, 1)
-
-          before = """          build: document.documentElement.dataset.build,\n          state: this.state,\n"""
-          after = """          build: document.documentElement.dataset.build,\n          state: this.state,\n          bootReady: this.bootReady,\n          renderProbe: this.renderProbe,\n"""
-          assert before in html
-          index_path.write_text(html.replace(before, after, 1), encoding='utf-8')
           PY
 
-          test -s ATTRIBUTION.md
-          grep -q 'data-build="court-pong-repo-r4"' index.html
-          grep -q 'sampleRenderedScene' index.html
-          grep -q 'renderProbe >= 2' tests/court-pong-audit.cjs
-          grep -q -- '-live.png' tests/court-pong-audit.cjs
-          grep -q 'PongThreeJS' ATTRIBUTION.md
+          grep -q 'data-build="court-pong-repo-r5"' index.html
+          grep -q "textContent = 'SEGURE'" index.html
+          grep -q 'webkit-phone-landscape' tests/court-pong-audit.cjs
           node --check tests/court-pong-audit.cjs
           python3 - <<'PY'
           from pathlib import Path
@@ -127,22 +86,21 @@ jobs:
           html = Path('index.html').read_text(encoding='utf-8')
           modules = re.findall(r'<script type="module">\s*(.*?)\s*</script>', html, re.S)
           assert len(modules) == 1
-          Path('/tmp/court-pong-r4.mjs').write_text(modules[0], encoding='utf-8')
+          Path('/tmp/court-pong-r5.mjs').write_text(modules[0], encoding='utf-8')
           PY
-          node --check /tmp/court-pong-r4.mjs
+          node --check /tmp/court-pong-r5.mjs
           sha256sum index.html tests/court-pong-audit.cjs
-          rm -f .github/workflows/court-pong-audit.yml
 
-      - name: Commit visible-frame gate and live evidence audit
+      - name: Commit R5 mobile calibration
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'Court Pong Repository Builder'
           git config user.email 'actions@users.noreply.github.com'
-          git add index.html ATTRIBUTION.md tests/court-pong-audit.cjs
+          git add index.html tests/court-pong-audit.cjs
           if git diff --cached --quiet; then
-            echo 'R4 already matches the branch.'
+            echo 'R5 already matches the branch.'
           else
-            git commit -m 'fix: wait for a visible 3D frame and capture live gameplay'
+            git commit -m 'fix: calibrate touch labels and portrait framing'
             git push origin HEAD:pong-curvebreak-rebuild
           fi
