@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-build="court-pong-repo-r4" data-test="pending">
+<html lang="pt-BR" data-build="court-pong-repo-r5" data-test="pending">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
@@ -957,6 +957,12 @@
         this.calloutEl = document.getElementById('callout');
         this.playerMarker = document.getElementById('player-marker');
         this.testBadge = document.getElementById('testBadge');
+        if (this.isCoarse) {
+          this.parryBtn.querySelector('small').textContent = 'SEGURE';
+          this.dashBtn.querySelector('small').textContent = `${CONFIG.dashCost} ENERGIA`;
+          this.shieldBtn.querySelector('small').textContent = `${CONFIG.shieldCost} ENERGIA`;
+          this.weaponBtn.querySelector('small').textContent = 'TOQUE';
+        }
         this.startBtn.addEventListener('click', () => this.primaryAction());
         this.difficultyBtn.addEventListener('click', () => {
           this.difficultyIndex = (this.difficultyIndex + 1) % DIFFICULTIES.length;
@@ -1256,9 +1262,9 @@
         const aspect = innerWidth / innerHeight;
         const phonePortrait = aspect < .58;
         const portrait = aspect < .82;
-        const baseY = phonePortrait ? 12 : portrait ? 9 : 5;
-        const baseZ = phonePortrait ? 28 : portrait ? 22.5 : 17.5;
-        const targetZ = phonePortrait ? 6 : portrait ? 4.5 : 1.5;
+        const baseY = phonePortrait ? 10.8 : portrait ? 9 : 5;
+        const baseZ = phonePortrait ? 25.5 : portrait ? 22.5 : 17.5;
+        const targetZ = phonePortrait ? 6.2 : portrait ? 4.5 : 1.5;
         const shake = this.trauma * this.trauma;
         const randX = (Math.random() * 2 - 1) * shake * .28;
         const randY = (Math.random() * 2 - 1) * shake * .16;
@@ -1314,6 +1320,11 @@
         this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));
         this.renderer.setSize(w, h, false);
         this.renderProbe = 0;
+        if (this.frame > 0) {
+          this.bootReady = false;
+          window.__COURT_PONG_BOOTED__ = false;
+          document.documentElement.dataset.test = 'pending';
+        }
       }
       sampleRenderedScene() {
         const gl = this.renderer.getContext();
@@ -1352,8 +1363,6 @@
             window.__COURT_PONG_BOOTED__ = true;
             document.documentElement.dataset.test = 'pass';
           }
-        } else if (this.bootReady && this.frame % 240 === 0) {
-          this.sampleRenderedScene();
         }
         requestAnimationFrame(t => this.loop(t));
       }

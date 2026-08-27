@@ -141,7 +141,9 @@ async function runCase(browser, engine, profile) {
     isMobile: touch,
     locale: 'pt-BR',
     userAgent: touch
-      ? 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+      ? (viewport.width <= 844 && viewport.height <= 844
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+        : 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1')
       : undefined,
   });
   const page = await context.newPage();
@@ -167,6 +169,11 @@ async function runCase(browser, engine, profile) {
     assert(documentTitle === 'Court Pong — Arena 3D', `${id}: wrong title ${documentTitle}`);
     assert(!(await page.locator('#fatal').isVisible()), `${id}: fatal screen visible`);
     assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);
+    assert(!(await page.locator('#pauseBtn').isVisible()), `${id}: pause button should be hidden before the duel`);
+    if (touch) {
+      const hints = await page.locator('#actions small').allTextContents();
+      assert(hints.join('|') === 'SEGURE|26 ENERGIA|42 ENERGIA|TOQUE', `${id}: mobile hints are not touch-specific: ${hints.join('|')}`);
+    }
 
     const initial = await diagnostics(page);
     assert(initial.renderProbe >= 2, `${id}: WebGL court did not produce visible pixels`);
@@ -314,6 +321,7 @@ async function runCase(browser, engine, profile) {
       await runCase(wk, 'webkit-ipad-landscape', { viewport: { width: 1180, height: 820 }, touch: true });
       await runCase(wk, 'webkit-ipad', { viewport: { width: 820, height: 1180 }, touch: true });
       await runCase(wk, 'webkit-phone', { viewport: { width: 390, height: 844 }, touch: true });
+      await runCase(wk, 'webkit-phone-landscape', { viewport: { width: 844, height: 390 }, touch: true });
     } finally {
       await wk.close();
     }
