@@ -27,13 +27,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .court-source/bundle.b64.part* | base64 -d > /tmp/court-pong-bundle.tar.gz
-          echo 'bc0384888f057d4e871c45f9224253b4cd90a78f410863c06566b5106a3fe1d0  /tmp/court-pong-bundle.tar.gz' | sha256sum -c -
+          cat .court-source/bundle-r3.b64.part* | base64 -d > /tmp/court-pong-bundle.tar.gz
+          echo '4373c4519a1b1f3f6225a137391e656f00d1632608b5885bd9c48e75bf15339f  /tmp/court-pong-bundle.tar.gz' | sha256sum -c -
           tar -xzf /tmp/court-pong-bundle.tar.gz
           test -s index.html
           test -s ATTRIBUTION.md
           test -s tests/court-pong-audit.cjs
-          grep -q 'data-build="court-pong-repo-r2"' index.html
+          grep -q 'data-build="court-pong-repo-r3"' index.html
           grep -q 'PongThreeJS' ATTRIBUTION.md
           node --check tests/court-pong-audit.cjs
           rm -f .github/workflows/court-pong-audit.yml
@@ -48,6 +48,6 @@ jobs:
           if git diff --cached --quiet; then
             echo 'Bundle already matches the branch.'
           else
-            git commit -m 'feat: replace AI-neon prototype with repository-based Court Pong'
+            git commit -m 'fix: frame the player clearly and remove menu obstruction'
             git push origin HEAD:pong-curvebreak-rebuild
           fi
