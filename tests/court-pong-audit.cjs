@@ -167,7 +167,6 @@ async function runCase(browser, engine, profile) {
     assert(documentTitle === 'Court Pong — Arena 3D', `${id}: wrong title ${documentTitle}`);
     assert(!(await page.locator('#fatal').isVisible()), `${id}: fatal screen visible`);
     assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);
-    await assertLayout(page, viewport, id);
 
     const initial = await diagnostics(page);
     assert(initial.player.visible, `${id}: orange player piece is outside camera view`);
@@ -177,6 +176,7 @@ async function runCase(browser, engine, profile) {
 
     await action(page, touch, '#startBtn');
     await waitState(page, () => window.__COURT_PONG_DIAGNOSTICS__?.state === 'play', `${id}: match did not enter play`, 6000);
+    await assertLayout(page, viewport, id);
     const liveStart = await page.evaluate(() => ({
       frame: window.__COURT_PONG_DIAGNOSTICS__.frame,
       simTime: window.__COURT_PONG_DIAGNOSTICS__.simTime,
