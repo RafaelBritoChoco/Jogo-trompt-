@@ -23,19 +23,40 @@ jobs:
           ref: pong-curvebreak-rebuild
           fetch-depth: 0
 
-      - name: Decode verified source bundle
+      - name: Rebuild R3 from verified R2 plus audited patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .court-source/bundle-r3.b64.part* | base64 -d > /tmp/court-pong-bundle.tar.gz
-          echo '4373c4519a1b1f3f6225a137391e656f00d1632608b5885bd9c48e75bf15339f  /tmp/court-pong-bundle.tar.gz' | sha256sum -c -
-          tar -xzf /tmp/court-pong-bundle.tar.gz
-          test -s index.html
+
+          cat .court-source/bundle.b64.part* | base64 -d > /tmp/court-pong-r2.tar.gz
+          echo 'bc0384888f057d4e871c45f9224253b4cd90a78f410863c06566b5106a3fe1d0  /tmp/court-pong-r2.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/court-pong-r2.tar.gz
+
+          cat .court-source/index-r3.patch.gz.b64.part* | base64 -d > /tmp/index-r3.patch.gz
+          echo '98dec9ee68a5029cbae4df3949013b9d12916754ec47b306b625810258975262  /tmp/index-r3.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/index-r3.patch.gz > /tmp/index-r3.patch
+          patch -p0 < /tmp/index-r3.patch
+
+          base64 -d .court-source/test-r3.patch.gz.b64 > /tmp/test-r3.patch.gz
+          echo '0de266cb6b4eb666ac29563e5318e50c649be559b40ebfaa515b8a19eef90c6a  /tmp/test-r3.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/test-r3.patch.gz > /tmp/test-r3.patch
+          patch -p0 < /tmp/test-r3.patch
+
+          echo 'b0c58a5947e042a9b8e0bd788840c7f592e7f31bacc4bc73af84a77d77fec57f  index.html' | sha256sum -c -
+          echo '3c4bfebcae158bf20dc1f714efc35761214889a29fbef6249d647b6ff00efd7f  tests/court-pong-audit.cjs' | sha256sum -c -
           test -s ATTRIBUTION.md
-          test -s tests/court-pong-audit.cjs
           grep -q 'data-build="court-pong-repo-r3"' index.html
           grep -q 'PongThreeJS' ATTRIBUTION.md
           node --check tests/court-pong-audit.cjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          modules = re.findall(r'<script type="module">\s*(.*?)\s*</script>', html, re.S)
+          assert len(modules) == 1
+          Path('/tmp/court-pong-r3.mjs').write_text(modules[0], encoding='utf-8')
+          PY
+          node --check /tmp/court-pong-r3.mjs
           rm -f .github/workflows/court-pong-audit.yml
 
       - name: Commit reconstructed game and browser audit
@@ -46,7 +67,7 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add index.html ATTRIBUTION.md tests/court-pong-audit.cjs
           if git diff --cached --quiet; then
-            echo 'Bundle already matches the branch.'
+            echo 'R3 already matches the branch.'
           else
             git commit -m 'fix: frame the player clearly and remove menu obstruction'
             git push origin HEAD:pong-curvebreak-rebuild
