@@ -1,19 +1,76 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#020611" />
-  <link rel="icon" href="data:," />
-  <meta http-equiv="refresh" content="0;url=./curvebreak/v3/index.html" />
-  <title>CURVEBREAK — Rift League</title>
-  <style>
-    html,body{height:100%;margin:0;background:#020611;color:#f4fdff;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center}
-    a{color:#55f6ff;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
-  </style>
-</head>
-<body>
-  <a href="./curvebreak/v3/index.html">Abrir CURVEBREAK</a>
-  <script>location.replace('./curvebreak/v3/index.html');</script>
-</body>
+<!DOCTYPE html>
+<html lang="pt-BR" data-build="proven-base-r2">
+	<head>
+		<title>PONG 3D — Sports Prototype</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#181c20"><link rel="icon" href="data:,">
+		<link href="css/default.css" rel="stylesheet">
+
+		<script type="importmap">
+		{
+			"imports": {
+				"three": "./js/three.module.min.js"
+			}
+		}
+		</script>
+
+		<script type="module">
+			import * as THREE from './js/three.module.min.js';
+			window.THREE = THREE;
+			import Stats from './js/stats.module.js';
+			window.Stats = Stats;
+			import GUI from './js/lil-gui.module.min.js';
+			window.GUI = GUI;
+		</script>
+	<style id="sports-readability">
+		:root{--paper:#e9e0d1;--ink:#181c20;--blue:#225f9b;--rust:#a8422e;--white:#fffdf5;--line:rgba(24,28,32,.28)}
+		*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+		html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none;overscroll-behavior:none}
+		#container canvas{position:fixed!important;inset:0;width:100%!important;height:100%!important;display:block;touch-action:none}
+		#overlay{position:fixed!important;inset:0!important;display:grid!important;place-items:center!important;background:linear-gradient(145deg,#eee5d7,#c7b7a1)!important;z-index:10000!important}
+		#startButton{min-width:250px;padding:18px 28px;border:2px solid var(--ink);border-radius:7px;background:var(--paper);color:var(--ink);box-shadow:8px 8px 0 var(--ink);font:950 24px/1 system-ui;letter-spacing:.12em;cursor:pointer}
+		#startButton small{display:block;margin-top:9px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;opacity:.64}
+		#startButton:active{transform:translate(4px,4px);box-shadow:4px 4px 0 var(--ink)}
+		#info{position:fixed!important;top:max(10px,env(safe-area-inset-top))!important;left:50%!important;transform:translateX(-50%);padding:8px 11px;background:rgba(233,224,209,.92);border:1px solid var(--ink);border-radius:3px;color:var(--ink)!important;font:900 9px/1 system-ui!important;letter-spacing:.15em!important;white-space:nowrap;z-index:30}
+		#playerScore,#computerScore{bottom:max(10px,env(safe-area-inset-bottom))!important;padding:8px 11px;background:rgba(233,224,209,.94);border:1px solid currentColor;border-radius:3px;font:950 clamp(16px,3.2vw,27px)/1 system-ui!important;z-index:30}
+		#cameraInfo{display:none!important}
+		#infoBanner{top:13%!important;left:10%!important;right:10%!important;color:var(--paper)!important;font:950 clamp(23px,5vw,52px)/1 system-ui!important;text-shadow:0 2px 14px #000;z-index:30}
+		#controlHelp{position:fixed;left:50%;bottom:max(58px,calc(env(safe-area-inset-bottom) + 58px));transform:translateX(-50%);max-width:calc(100vw - 24px);padding:7px 10px;background:rgba(24,28,32,.82);border:1px solid rgba(233,224,209,.25);border-radius:3px;color:var(--paper);font:850 9px/1.25 system-ui;letter-spacing:.09em;text-align:center;white-space:nowrap;z-index:28;pointer-events:none}
+		.marker{position:fixed;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid currentColor;border-radius:3px;background:rgba(233,224,209,.93);font:950 9px/1 system-ui;letter-spacing:.08em;z-index:26;pointer-events:none;will-change:left,top,opacity}
+		.marker span{font-size:7px;opacity:.65}.marker.player{color:var(--blue)}.marker.rival{color:var(--rust)}.marker.ball{padding:4px 6px;color:var(--ink);background:rgba(255,253,245,.95)}
+		.marker.ball i{width:10px;height:10px;border-radius:50%;background:var(--white);border:2px solid var(--ink);box-shadow:0 0 0 2px rgba(255,255,255,.55)}
+		.lil-gui.root{opacity:.12;transition:opacity .15s}.lil-gui.root:hover{opacity:1}
+		@media(max-width:700px){#controlHelp{font-size:7.5px;bottom:max(52px,calc(env(safe-area-inset-bottom) + 52px))}.marker{font-size:8px}.marker span{display:none}.lil-gui.root{display:none!important}}
+		</style>
+	</head>
+	
+	<body>
+		<!-- begin Web Audio user-interaction requirement for MacOS & iOS -->
+		<div id="overlay">
+			<button id="startButton"><span>JOGAR</span><small>Pong 3D sobre base aberta comprovada</small></button>
+		</div>
+		<!-- end Web Audio user-interaction requirement for MacOS & iOS -->
+		
+		<div id="container"> </div>
+		<div id="info">PONG 3D · TESTE DE JOGABILIDADE</div>
+		
+		<div id="playerScore" style="position:fixed; left:2%; bottom:1%; font-size:x-large; font-family:arial; color:#225f9b;"></div>
+		<div id="computerScore" style="position:fixed; right:2%; bottom:1%; font-size:x-large; font-family:arial; color:#a8422e;"></div>
+		<div id="cameraInfo" style="position:fixed; left:2%; bottom:5%; font-size:x-large; font-family:arial; color:rgb(255,255,255);"></div>
+		<div id="infoBanner" style="position:fixed; text-align:center; left:20%; right:20%; top:20%; font-size:xx-large; font-family:arial; color:rgb(255,255,255);"></div>
+
+		<script defer src="js/MobileJoystickControls.js"> </script>
+		<script defer src="js/PathTracingCommon.js"> </script>
+		<script defer src="js/InitCommon.js"> </script>
+
+		<script defer src="js/Path_Traced_Pong.js"> </script>
+
+		<div id="objectMarkers" aria-hidden="true">
+			<div id="playerMarker" class="marker player"><b>VOCÊ</b><span>SUA RAQUETE</span></div>
+			<div id="ballMarker" class="marker ball"><i></i><b>BOLA</b></div>
+			<div id="rivalMarker" class="marker rival"><b>RIVAL</b></div>
+		</div>
+		<div id="controlHelp">MOVA O MOUSE OU ARRASTE · DEVOLVA A BOLA BRANCA · PRIMEIRO A 5</div>
+
+	</body>
 </html>
