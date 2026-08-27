@@ -1,0 +1,13 @@
+CURVEBREAK CERTIFICATION: FAILED
+commit=fae1f1a1c9007f9828e7e9ee0e64d54cc31b9291
+run_id=33070503068
+
+Error: chromium-desktop: render loop stalled
+    at assert (/home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:13:21)
+    at runCase (/home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:122:5)
+    at async /home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:340:7
+
+Error: chromium-desktop: render loop stalled
+    at assert (/home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:13:21)
+    at runCase (/home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:122:5)
+    at async /home/runner/work/Jogo-trompt-/Jogo-trompt-/curvebreak/tests/.generated-v5-layout-audit.cjs:340:7
