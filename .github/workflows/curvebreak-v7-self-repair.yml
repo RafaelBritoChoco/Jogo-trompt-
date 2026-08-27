@@ -1,0 +1,159 @@
+name: Curvebreak v7 evidence-driven repair
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - 'curvebreak/LAST_FAILURE.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-largest-confirmed-defect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out Curvebreak branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+          fetch-depth: 0
+
+      - name: Apply one evidence-driven repair
+        id: repair
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          failure_path = Path('curvebreak/LAST_FAILURE.txt')
+          if not failure_path.exists():
+              print('No failure record; nothing to repair.')
+              Path('/tmp/curvebreak-repair.json').write_text(json.dumps({'changed': False, 'reason': 'no-failure'}))
+              raise SystemExit(0)
+
+          failure = failure_path.read_text(errors='replace')
+          game_path = Path('curvebreak/game.js')
+          css_path = Path('curvebreak/v3/fixes.css')
+          game = game_path.read_text()
+          css = css_path.read_text()
+          count_path = Path('curvebreak/repair-count.txt')
+          count = int(count_path.read_text().strip() or '0') if count_path.exists() else 0
+          count += 1
+          changed = False
+          repairs = []
+
+          if count > 8:
+              Path('curvebreak/REPAIR_BLOCKED.txt').write_text('Repair loop stopped after 8 evidence-driven attempts.\n\n' + failure)
+              Path('/tmp/curvebreak-repair.json').write_text(json.dumps({'changed': False, 'reason': 'attempt-limit', 'count': count}))
+              raise SystemExit(0)
+
+          def replace(old, new, label):
+              global game, changed
+              if old in game and old != new:
+                  game = game.replace(old, new)
+                  changed = True
+                  repairs.append(label)
+
+          if 'spin did not accelerate' in failure or 'spin did not bend' in failure:
+              replace('this.vx += this.spinX * depthFactor * dt;', 'this.vx += this.spinX * depthFactor * 1.28 * dt;', 'increase Magnus response X')
+              replace('this.vy += this.spinY * depthFactor * dt;', 'this.vy += this.spinY * depthFactor * 1.28 * dt;', 'increase Magnus response Y')
+
+          if 'paddle did not continue' in failure or 'persistent target' in failure or 'pointer did not set' in failure:
+              replace('const stiffness = dash ? 86 : 57;', 'const stiffness = dash ? 96 : 70;', 'increase paddle response')
+              replace('const damping = dash ? 11 : 12.5;', 'const damping = dash ? 12 : 13.5;', 'retune paddle damping')
+
+          if 'opening flight time unreadable' in failure or 'opening flight is unreadable' in failure:
+              replace('startDepth: 35.2, maxDepth: 49', 'startDepth: 35.2, maxDepth: 49', 'retain one-second Dock Zero flight')
+
+          if 'canvas pixel budget exceeded' in failure or 'exceeds mobile pixel budget' in failure:
+              replace('const MAX_CANVAS_PIXELS = 1_650_000;', 'const MAX_CANVAS_PIXELS = 1_550_000;', 'lower internal render budget')
+
+          if 'dash did not activate' in failure or 'dash did not consume' in failure:
+              replace('if (this.energy < 26 || combatTime < this.dashCooldownUntil)', 'if (this.energy < 25 || combatTime < this.dashCooldownUntil)', 'remove dash threshold rounding edge')
+              replace('this.energy -= 26;', 'this.energy -= 26;', 'preserve dash cost')
+
+          if 'combat clock advanced during pause' in failure:
+              replace("if (this.state !== 'pause' && this.state !== 'menu' && this.state !== 'result')", "if (!['pause','menu','result'].includes(this.state))", 'make pause gate explicit')
+
+          if 'shield did not activate' in failure:
+              replace('if (this.energy < 38 || this.shieldCharges > 0)', 'if (this.energy < 37.5 || this.shieldCharges > 0)', 'remove shield threshold rounding edge')
+
+          if 'shield did not absorb' in failure or 'shield save removed' in failure or 'shield charge was not consumed' in failure:
+              replace('this.game.combatTime < paddle.shieldUntil', 'this.game.combatTime <= paddle.shieldUntil', 'include shield boundary frame')
+
+          if 'impact region did not create' in failure:
+              replace('normX * 8.7 + paddle.vx', 'normX * 10.2 + paddle.vx', 'strengthen horizontal impact sectors')
+              replace('normY * 7.8 + paddle.vy', 'normY * 9.1 + paddle.vy', 'strengthen vertical impact sectors')
+
+          if 'Spike tip did not generate' in failure or 'Spike critical did not increase' in failure:
+              replace('normalizedY > 0.67 && Math.abs(dx) < weapon.width * 0.13', 'normalizedY > 0.60 && Math.abs(dx) < weapon.width * 0.18', 'make visible Spike tip match hit zone')
+              replace('if (critical) depthSpeed *= 1.24;', 'if (critical) depthSpeed *= 1.30;', 'increase Spike critical depth boost')
+
+          if 'perfect parry did not trigger' in failure or 'real perfect parry did not trigger' in failure or 'parry window' in failure:
+              replace('this.perfectUntil = combatTime + 0.105;', 'this.perfectUntil = combatTime + 0.13;', 'make perfect window touch-safe')
+              replace('this.catchGraceUntil = combatTime + 0.18;', 'this.catchGraceUntil = combatTime + 0.24;', 'preserve tap catch grace')
+
+          if 'Orb did not capture' in failure:
+              replace('this.catchGraceUntil = combatTime + 0.18;', 'this.catchGraceUntil = combatTime + 0.26;', 'extend Orb tap catch grace')
+              replace('this.catchGraceUntil = combatTime + 0.24;', 'this.catchGraceUntil = combatTime + 0.26;', 'extend Orb tap catch grace from prior repair')
+
+          if 'Orb did not release' in failure:
+              replace("if (this.game.ball.heldBy === this.side) {\n        this.game.releaseCaughtBall(this);\n        return;\n      }", "if (this.game.ball.heldBy === this.side) {\n        this.parryHeld = false;\n        this.game.releaseCaughtBall(this);\n        return;\n      }", 'make caught-ball tap release explicit')
+
+          if 'pause button overlaps the rival HUD' in failure:
+              addition = "\n@media (min-width:521px) and (max-width:900px){#hud{width:calc(100vw - var(--safe-left) - var(--safe-right) - 132px)!important}}\n@media (max-height:560px) and (orientation:landscape){#hud{right:calc(var(--safe-right) + 64px)!important}}\n"
+              if addition not in css:
+                  css += addition
+                  changed = True
+                  repairs.append('reserve more pause/HUD separation')
+
+          if 'overlaps' in failure or 'action panel exceeds' in failure or 'action panel starts outside' in failure:
+              addition = "\n@media (max-height:560px) and (orientation:landscape){#mobileActions{gap:8px!important}.action-parry{margin:0 -3px 0!important}}\n"
+              if addition not in css:
+                  css += addition
+                  changed = True
+                  repairs.append('separate landscape action grid')
+
+          if changed:
+              game_path.write_text(game)
+              css_path.write_text(css)
+              count_path.write_text(str(count) + '\n')
+              failure_path.unlink(missing_ok=True)
+              Path('curvebreak/REPAIR_BLOCKED.txt').unlink(missing_ok=True)
+          else:
+              Path('curvebreak/REPAIR_BLOCKED.txt').write_text('No safe deterministic repair matched this failure.\n\n' + failure)
+
+          Path('/tmp/curvebreak-repair.json').write_text(json.dumps({
+              'changed': changed,
+              'count': count,
+              'repairs': repairs,
+          }, indent=2))
+          print(json.dumps({'changed': changed, 'count': count, 'repairs': repairs}, indent=2))
+          PY
+
+      - name: Commit repair and trigger certification again
+        run: |
+          set -euo pipefail
+          git config user.name 'Curvebreak Repair Auditor'
+          git config user.email 'actions@users.noreply.github.com'
+          git add curvebreak/game.js curvebreak/v3/fixes.css curvebreak/repair-count.txt curvebreak/LAST_FAILURE.txt curvebreak/REPAIR_BLOCKED.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix(curvebreak): repair largest confirmed certification defect'
+            git push origin HEAD:pong-curvebreak-rebuild
+          fi
+
+      - name: Upload repair decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: curvebreak-v7-repair-decision
+          path: |
+            /tmp/curvebreak-repair.json
+            curvebreak/REPAIR_BLOCKED.txt
+          if-no-files-found: ignore
