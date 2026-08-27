@@ -1,0 +1,320 @@
+name: Proven Pong rebuild gauntlet
+
+on:
+  push:
+    branches:
+      - pong-proven-base-r1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out isolated branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-proven-base-r1
+          fetch-depth: 0
+
+      - name: Import the pinned working game exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA="6ba8949d289f6045d115e0e2e9eeabe7927b14ee"
+
+          if [[ ! -f UPSTREAM_IMPORT_SHA.txt ]]; then
+            rm -rf /tmp/PathTracedPong
+            git clone --quiet https://github.com/erichlof/PathTracedPong.git /tmp/PathTracedPong
+            git -C /tmp/PathTracedPong checkout --quiet "$UPSTREAM_SHA"
+
+            find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
+            rsync -a --exclude='.git' /tmp/PathTracedPong/ ./
+            mv Path_Traced_Pong.html index.html
+            cp LICENSE LICENSE-UPSTREAM-PathTracedPong
+            printf '%s\n' "$UPSTREAM_SHA" > UPSTREAM_IMPORT_SHA.txt
+
+            python3 - <<'PY'
+            from pathlib import Path
+
+            html_path = Path('index.html')
+            html = html_path.read_text(encoding='utf-8')
+            html = html.replace('<html lang="en">', '<html lang="pt-BR" data-build="proven-base-r2">')
+            html = html.replace('<title>Path Traced Pong (a fully path traced game)</title>', '<title>PONG 3D — Sports Prototype</title>')
+            html = html.replace(
+                '<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">',
+                '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#181c20"><link rel="icon" href="data:,">'
+            )
+            html = html.replace('<button id="startButton">Play</button>', '<button id="startButton"><span>JOGAR</span><small>Pong 3D sobre base aberta comprovada</small></button>')
+            html = html.replace('<div id="info">Path Traced Pong (a fully path traced game)</div>', '<div id="info">PONG 3D · TESTE DE JOGABILIDADE</div>')
+            html = html.replace('color:rgb(26,179,255);', 'color:#225f9b;')
+            html = html.replace('color:rgb(179,26,255);', 'color:#a8422e;')
+            html = html.replace(
+                '<script defer src="js/Path_Traced_Pong.js"> </script>',
+                '''<script defer src="js/Path_Traced_Pong.js"> </script>
+                <div id="objectMarkers" aria-hidden="true">
+                  <div id="playerMarker" class="marker player"><b>VOCÊ</b><span>SUA RAQUETE</span></div>
+                  <div id="ballMarker" class="marker ball"><i></i><b>BOLA</b></div>
+                  <div id="rivalMarker" class="marker rival"><b>RIVAL</b></div>
+                </div>
+                <div id="controlHelp">MOVA O MOUSE OU ARRASTE · DEVOLVA A BOLA BRANCA · PRIMEIRO A 5</div>'''
+            )
+            html = html.replace('</head>', '''<style id="sports-readability">
+            :root{--paper:#e9e0d1;--ink:#181c20;--blue:#225f9b;--rust:#a8422e;--white:#fffdf5;--line:rgba(24,28,32,.28)}
+            *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none;overscroll-behavior:none}
+            #container canvas{position:fixed!important;inset:0;width:100%!important;height:100%!important;display:block;touch-action:none}
+            #overlay{position:fixed!important;inset:0!important;display:grid!important;place-items:center!important;background:linear-gradient(145deg,#eee5d7,#c7b7a1)!important;z-index:10000!important}
+            #startButton{min-width:250px;padding:18px 28px;border:2px solid var(--ink);border-radius:7px;background:var(--paper);color:var(--ink);box-shadow:8px 8px 0 var(--ink);font:950 24px/1 system-ui;letter-spacing:.12em;cursor:pointer}
+            #startButton small{display:block;margin-top:9px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;opacity:.64}
+            #startButton:active{transform:translate(4px,4px);box-shadow:4px 4px 0 var(--ink)}
+            #info{position:fixed!important;top:max(10px,env(safe-area-inset-top))!important;left:50%!important;transform:translateX(-50%);padding:8px 11px;background:rgba(233,224,209,.92);border:1px solid var(--ink);border-radius:3px;color:var(--ink)!important;font:900 9px/1 system-ui!important;letter-spacing:.15em!important;white-space:nowrap;z-index:30}
+            #playerScore,#computerScore{bottom:max(10px,env(safe-area-inset-bottom))!important;padding:8px 11px;background:rgba(233,224,209,.94);border:1px solid currentColor;border-radius:3px;font:950 clamp(16px,3.2vw,27px)/1 system-ui!important;z-index:30}
+            #cameraInfo{display:none!important}
+            #infoBanner{top:13%!important;left:10%!important;right:10%!important;color:var(--paper)!important;font:950 clamp(23px,5vw,52px)/1 system-ui!important;text-shadow:0 2px 14px #000;z-index:30}
+            #controlHelp{position:fixed;left:50%;bottom:max(58px,calc(env(safe-area-inset-bottom) + 58px));transform:translateX(-50%);max-width:calc(100vw - 24px);padding:7px 10px;background:rgba(24,28,32,.82);border:1px solid rgba(233,224,209,.25);border-radius:3px;color:var(--paper);font:850 9px/1.25 system-ui;letter-spacing:.09em;text-align:center;white-space:nowrap;z-index:28;pointer-events:none}
+            .marker{position:fixed;left:0;top:0;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid currentColor;border-radius:3px;background:rgba(233,224,209,.93);font:950 9px/1 system-ui;letter-spacing:.08em;z-index:26;pointer-events:none;will-change:left,top,opacity}
+            .marker span{font-size:7px;opacity:.65}.marker.player{color:var(--blue)}.marker.rival{color:var(--rust)}.marker.ball{padding:4px 6px;color:var(--ink);background:rgba(255,253,245,.95)}
+            .marker.ball i{width:10px;height:10px;border-radius:50%;background:var(--white);border:2px solid var(--ink);box-shadow:0 0 0 2px rgba(255,255,255,.55)}
+            .lil-gui.root{opacity:.12;transition:opacity .15s}.lil-gui.root:hover{opacity:1}
+            @media(max-width:700px){#controlHelp{font-size:7.5px;bottom:max(52px,calc(env(safe-area-inset-bottom) + 52px))}.marker{font-size:8px}.marker span{display:none}.lil-gui.root{display:none!important}}
+            </style></head>''')
+            html_path.write_text(html, encoding='utf-8')
+
+            game_path = Path('js/Path_Traced_Pong.js')
+            game = game_path.read_text(encoding='utf-8')
+            game = game.replace('let gravityOn = true;', 'let gravityOn = false;')
+            game = game.replace('playerScoreElement.innerHTML = "Player: " + playerScore;', 'playerScoreElement.innerHTML = "VOCÊ  " + playerScore;')
+            game = game.replace('computerScoreElement.innerHTML = "Computer: " + computerScore;', 'computerScoreElement.innerHTML = "RIVAL  " + computerScore;')
+            game = game.replace('infoBannerElement.innerHTML = "Player WINS!"', 'infoBannerElement.innerHTML = "VOCÊ VENCEU"')
+            game = game.replace('infoBannerElement.innerHTML = "Computer WINS!"', 'infoBannerElement.innerHTML = "RIVAL VENCEU"')
+            game = game.replace('init(); // init app and start animating', 'init(); // init app and start animating\n\tisPaused = false; // direct control after pressing Play; no second click required')
+            game = game.replace('\t// DEBUG INFO\n\t//cameraInfoElement.innerHTML', '\twindow.__updateObjectMarkers?.();\n\n\t// DEBUG INFO\n\t//cameraInfoElement.innerHTML')
+            game += r'''
+
+            // Read-only test bridge and real 3D-to-screen object markers.
+            (() => {
+              const playerMarker = document.getElementById('playerMarker');
+              const ballMarker = document.getElementById('ballMarker');
+              const rivalMarker = document.getElementById('rivalMarker');
+              const scratch = new THREE.Vector3();
+              function place(marker, source, offsetY = 0) {
+                if (!marker || !worldCamera) return;
+                scratch.copy(source).project(worldCamera);
+                const visible = Number.isFinite(scratch.x) && Number.isFinite(scratch.y) && scratch.z > -1.2 && scratch.z < 1.2;
+                marker.style.opacity = visible ? '1' : '0';
+                if (!visible) return;
+                marker.style.left = `${(scratch.x * 0.5 + 0.5) * innerWidth}px`;
+                marker.style.top = `${(-scratch.y * 0.5 + 0.5) * innerHeight + offsetY}px`;
+              }
+              window.__updateObjectMarkers = () => {
+                place(playerMarker, playerPos, 36);
+                place(ballMarker, ballPos, -22);
+                place(rivalMarker, computerPos, -28);
+              };
+              window.__PROVEN_PONG__ = {
+                state: () => ({
+                  player: { x: playerPos.x, y: playerPos.y, z: playerPos.z },
+                  rival: { x: computerPos.x, y: computerPos.y, z: computerPos.z },
+                  ball: { x: ballPos.x, y: ballPos.y, z: ballPos.z, speed: ballSpeed },
+                  score: { player: playerScore, rival: computerScore },
+                  difficulty, gravityOn, paused: isPaused, frameTime
+                })
+              };
+              document.documentElement.dataset.gameBridge = 'ready';
+            })();
+            '''
+            game_path.write_text(game, encoding='utf-8')
+
+            shader_path = Path('shaders/Path_Traced_Pong_Fragment.glsl')
+            shader = shader_path.read_text(encoding='utf-8')
+            shader = shader.replace('hitColor = vec3(1, 0, 0);', 'hitColor = vec3(0.22, 0.24, 0.26);')
+            shader = shader.replace('hitColor = vec3(0, 0.7, 0);', 'hitColor = vec3(0.38, 0.34, 0.29);')
+            shader = shader.replace('vec3(0.1, 0.7, 1.0), uCutSceneIsPlaying ? COAT : REFR', 'vec3(0.08, 0.32, 0.62), COAT')
+            shader = shader.replace('vec3(0.7, 0.1, 1.0), COAT', 'vec3(0.68, 0.16, 0.07), COAT')
+            shader_path.write_text(shader, encoding='utf-8')
+
+            Path('ATTRIBUTION.md').write_text('''# Attribution\n\nThis branch imports and modifies **PathTracedPong** by Erich Loftis, pinned to commit `6ba8949d289f6045d115e0e2e9eeabe7927b14ee`.\n\nThe upstream project is released under CC0 1.0. The complete upstream license is preserved in `LICENSE-UPSTREAM-PathTracedPong`.\n\nThe baseline retains the upstream renderer, path-traced room, ball movement, collisions, AI, mouse/touch control, camera, audio, modules and shaders. Rebuild changes in R2 are limited to material legibility, a neutral sports palette, Portuguese labels, direct first-click control, object markers and a read-only audit bridge.\n''', encoding='utf-8')
+            PY
+
+            git config user.name "Pong Proven-Base Auditor"
+            git config user.email "actions@users.noreply.github.com"
+            git add -A
+            git commit -m "rebuild: replace custom neon game with pinned CC0 Pong base [skip ci]"
+            git push origin HEAD:pong-proven-base-r1
+          fi
+
+          GAME_COMMIT="$(git rev-parse HEAD)"
+          echo "GAME_COMMIT=$GAME_COMMIT" >> "$GITHUB_ENV"
+          echo "GAME_URL=https://cdn.githubraw.com/RafaelBritoChoco/Jogo-trompt-/$GAME_COMMIT/index.html" >> "$GITHUB_ENV"
+
+      - name: Static integrity and provenance checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f index.html
+          test -f js/Path_Traced_Pong.js
+          test -f shaders/Path_Traced_Pong_Fragment.glsl
+          test -f LICENSE-UPSTREAM-PathTracedPong
+          grep -q 'proven-base-r2' index.html
+          grep -q '__PROVEN_PONG__' js/Path_Traced_Pong.js
+          grep -q '__updateObjectMarkers' js/Path_Traced_Pong.js
+          grep -q 'vec3(0.08, 0.32, 0.62), COAT' shaders/Path_Traced_Pong_Fragment.glsl
+          grep -q 'vec3(0.68, 0.16, 0.07), COAT' shaders/Path_Traced_Pong_Fragment.glsl
+          grep -q 'CC0' ATTRIBUTION.md
+          test "$(wc -c < js/PathTracingCommon.js)" -gt 100000
+          test "$(wc -c < js/three.module.min.js)" -gt 300000
+          node --check js/Path_Traced_Pong.js
+
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
+
+      - name: Execute actual mouse and touch gameplay
+        shell: bash
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/proven-pong-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          sleep 1
+
+          cat > /tmp/proven-audit.cjs <<'NODE'
+          const { chromium, webkit } = require('playwright');
+          const fs = require('fs');
+          const BASE='http://127.0.0.1:8765/index.html';
+          const results=[];
+          const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+          function assert(v,m){if(!v)throw new Error(m)}
+
+          async function realDrag(page, touch, box) {
+            if (!touch) {
+              await page.mouse.move(box.x+box.width*.50, box.y+box.height*.50);
+              await page.mouse.down();
+              await page.mouse.move(box.x+box.width*.76, box.y+box.height*.30,{steps:18});
+              await page.mouse.up();
+              return;
+            }
+            await page.evaluate(({x0,y0,x1,y1})=>{
+              const target=document.body;
+              const emit=(type,x,y)=>target.dispatchEvent(new PointerEvent(type,{pointerId:17,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,pageX:x,pageY:y,bubbles:true,cancelable:true,buttons:type==='pointerup'?0:1}));
+              emit('pointerdown',x0,y0);
+              for(let i=1;i<=16;i++){const t=i/16;emit('pointermove',x0+(x1-x0)*t,y0+(y1-y0)*t)}
+              emit('pointerup',x1,y1);
+            },{x0:box.x+box.width*.48,y0:box.y+box.height*.60,x1:box.x+box.width*.74,y1:box.y+box.height*.30});
+          }
+
+          async function runCase(browserType,engine,profile,launchOptions={}){
+            const browser=await browserType.launch({headless:true,...launchOptions});
+            const context=await browser.newContext({viewport:profile.viewport,deviceScaleFactor:profile.touch?2:1,hasTouch:profile.touch,isMobile:profile.touch,userAgent:profile.userAgent});
+            const page=await context.newPage();
+            const errors=[];const failed=[];
+            page.on('pageerror',e=>errors.push(`page:${e.message}`));
+            page.on('console',m=>{if(m.type()==='error')errors.push(`console:${m.text()}`)});
+            page.on('requestfailed',r=>failed.push(`${r.url()}::${r.failure()?.errorText}`));
+            try{
+              await page.goto(BASE,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.locator('#startButton').waitFor({state:'visible',timeout:20000});
+              await page.screenshot({path:`evidence/${engine}-${profile.name}-menu.png`,fullPage:true});
+              await page.locator('#startButton').click();
+              await page.waitForFunction(()=>document.documentElement.dataset.gameBridge==='ready'&&window.__PROVEN_PONG__,null,{timeout:30000});
+              await page.waitForTimeout(2500);
+              const before=await page.evaluate(()=>window.__PROVEN_PONG__.state());
+              assert(before.ball.speed>0,`${engine}/${profile.name}: bola sem velocidade`);
+              assert(before.player.z>before.rival.z,`${engine}/${profile.name}: lado do jogador incoerente`);
+              const canvas=page.locator('#container canvas').first();
+              await canvas.waitFor({state:'visible',timeout:20000});
+              const box=await canvas.boundingBox();
+              assert(box&&box.width>300&&box.height>250,`${engine}/${profile.name}: canvas inválido`);
+              await realDrag(page,profile.touch,box);
+              await page.waitForTimeout(900);
+              const moved=await page.evaluate(()=>window.__PROVEN_PONG__.state());
+              assert(distance(before.player,moved.player)>4,`${engine}/${profile.name}: controle real não moveu a raquete (${JSON.stringify(before.player)} -> ${JSON.stringify(moved.player)})`);
+              await page.waitForTimeout(900);
+              const after=await page.evaluate(()=>window.__PROVEN_PONG__.state());
+              assert(distance(moved.ball,after.ball)>1,`${engine}/${profile.name}: bola congelada`);
+
+              for(const selector of ['#playerMarker','#ballMarker','#rivalMarker','#controlHelp']){
+                const locator=page.locator(selector);assert(await locator.isVisible(),`${engine}/${profile.name}: ${selector} invisível`);const b=await locator.boundingBox();assert(b&&b.x+b.width>0&&b.y+b.height>0&&b.x<profile.viewport.width&&b.y<profile.viewport.height,`${engine}/${profile.name}: ${selector} fora da tela`)
+              }
+              assert(errors.length===0,`${engine}/${profile.name}: erros ${errors.join(' | ')}`);
+              assert(failed.length===0,`${engine}/${profile.name}: recursos falharam ${failed.join(' | ')}`);
+              const screenshot=`evidence/${engine}-${profile.name}-gameplay.png`;
+              await page.screenshot({path:screenshot,fullPage:true});
+              results.push({engine,profile:profile.name,viewport:profile.viewport,touch:profile.touch,passed:true,before,after,screenshot});
+            }finally{await context.close();await browser.close()}
+          }
+
+          (async()=>{
+            const desktop={name:'desktop',viewport:{width:1280,height:800},touch:false};
+            const ipad={name:'ipad-landscape',viewport:{width:1180,height:820},touch:true,userAgent:'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'};
+            const phone={name:'phone-landscape',viewport:{width:844,height:390},touch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'};
+            await runCase(chromium,'chrome',desktop,{executablePath:process.env.SYSTEM_CHROME,args:['--no-sandbox','--disable-dev-shm-usage','--use-angle=swiftshader']});
+            await runCase(webkit,'webkit',ipad);
+            await runCase(webkit,'webkit',phone);
+            fs.writeFileSync('evidence/results.json',JSON.stringify(results,null,2));
+            console.log(JSON.stringify(results,null,2));
+          })().catch(e=>{fs.writeFileSync('evidence/results.json',JSON.stringify({results,failure:String(e.stack||e)},null,2));console.error(e.stack||e);process.exit(1)});
+          NODE
+          node /tmp/proven-audit.cjs
+
+      - name: Verify full public commit route
+        shell: bash
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+        run: |
+          set -euo pipefail
+          sleep 10
+          curl --retry 7 --retry-delay 3 --retry-all-errors -fsSL "$GAME_URL" -o /tmp/public-index.html
+          grep -q 'proven-base-r2' /tmp/public-index.html
+          cat > /tmp/public-check.cjs <<'NODE'
+          const { chromium }=require('playwright');
+          (async()=>{const b=await chromium.launch({headless:true,executablePath:process.env.SYSTEM_CHROME,args:['--no-sandbox','--disable-dev-shm-usage','--use-angle=swiftshader']});const p=await b.newPage({viewport:{width:1180,height:820}});await p.goto(process.env.GAME_URL,{waitUntil:'domcontentloaded',timeout:60000});await p.locator('#startButton').click();await p.waitForFunction(()=>window.__PROVEN_PONG__,null,{timeout:30000});const a=await p.evaluate(()=>window.__PROVEN_PONG__.state().ball);await p.waitForTimeout(900);const c=await p.evaluate(()=>window.__PROVEN_PONG__.state().ball);if(Math.hypot(c.x-a.x,c.y-a.y,c.z-a.z)<1)throw new Error('public route ball frozen');await p.screenshot({path:'evidence/public-ipad.png',fullPage:true});await b.close()})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node /tmp/public-check.cjs
+          printf '%s\n' "$GAME_URL" > PROVEN_PREVIEW_URL.txt
+
+      - name: Persist browser-verified checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > PROVEN_BASE_CHECKPOINT.md <<EOF
+          # Proven Pong checkpoint R2
+
+          - Canonical branch: pong-proven-base-r1
+          - Upstream: erichlof/PathTracedPong
+          - Upstream commit: 6ba8949d289f6045d115e0e2e9eeabe7927b14ee
+          - License: CC0 1.0, preserved locally
+          - Public preview: $GAME_URL
+          - Browser gates: Chrome desktop, WebKit iPad landscape, WebKit phone landscape
+          - Real interaction gates: mouse drag and touch pointer drag must move the player paddle; the ball must continue moving.
+          - Readability gates: projected markers for player, ball and rival must remain visible inside the viewport.
+          - This is a baseline checkpoint, not final approval.
+          EOF
+          git config user.name "Pong Proven-Base Auditor"
+          git config user.email "actions@users.noreply.github.com"
+          git add PROVEN_PREVIEW_URL.txt PROVEN_BASE_CHECKPOINT.md evidence/results.json
+          git commit -m "checkpoint: store browser-verified proven Pong baseline [skip ci]"
+          git push origin HEAD:pong-proven-base-r1
+
+      - name: Upload evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proven-pong-r2-evidence
+          path: |
+            evidence
+            /tmp/proven-pong-server.log
+            PROVEN_PREVIEW_URL.txt
+            PROVEN_BASE_CHECKPOINT.md
+          if-no-files-found: ignore
