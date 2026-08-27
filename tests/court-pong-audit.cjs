@@ -160,7 +160,7 @@ async function runCase(browser, engine, profile) {
     await page.waitForTimeout(500);
 
     const selfTests = await page.evaluate(() => window.__COURT_PONG_SELFTEST__);
-    assert(Array.isArray(selfTests) && selfTests.length === 8, `${id}: unexpected self-test count`);
+    assert(Array.isArray(selfTests) && selfTests.length === 9, `${id}: unexpected self-test count`);
     assert(selfTests.every(test => test.pass), `${id}: self-tests failed: ${JSON.stringify(selfTests)}`);
     const documentTitle = await page.title();
     assert(documentTitle, `${id}: missing title`);

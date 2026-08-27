@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-build="court-pong-repo-r2" data-test="pending">
+<html lang="pt-BR" data-build="court-pong-repo-r3" data-test="pending">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
@@ -62,10 +62,11 @@
     #weapon-name { font-size: 15px; font-weight: 950; letter-spacing: .03em; color: #fff3e9; }
     #weapon-desc { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #b8c6cc; }
 
-    #player-marker { position: absolute; left: 50%; top: 72%; bottom: auto; transform: translate(-50%,-100%); display: flex; flex-direction: column; align-items: center; gap: 4px; color: #fff; font-size: 9px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; text-shadow: 0 2px 6px rgba(0,0,0,.75); opacity: 1; transition: opacity .12s; will-change: left, top; }
+    #player-marker { position: absolute; left: 50%; top: 66%; bottom: auto; transform: translate(-50%,-100%); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 999px; border: 1px solid rgba(255,181,139,.65); background: rgba(16,24,32,.88); color: #fff; font-size: 9px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; text-shadow: 0 2px 6px rgba(0,0,0,.75); opacity: 1; transition: opacity .12s, left .06s linear, top .06s linear; will-change: left, top; }
     #player-marker::after { content: ""; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--player); }
 
-    #actions { position: absolute; left: 50%; bottom: var(--safe-bottom); transform: translateX(-50%); display: grid; grid-template-columns: repeat(4, minmax(64px, 108px)); gap: 8px; pointer-events: auto; }
+    #actions { position: absolute; left: 50%; bottom: var(--safe-bottom); transform: translateX(-50%); display: grid; grid-template-columns: repeat(4, minmax(64px, 108px)); gap: 8px; pointer-events: auto; transition: opacity .16s, visibility .16s, transform .16s; }
+    body.menu-open #actions { opacity: 0; visibility: hidden; pointer-events: none; transform: translateX(-50%) translateY(12px); }
     .action { min-height: 58px; padding: 8px 9px; border: 0; border-radius: 14px; color: #f7f2e8; background: rgba(16,24,32,.92); box-shadow: 0 8px 22px rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.16); font-weight: 950; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; touch-action: none; }
     .action small { display: block; margin-top: 3px; font-size: 8px; letter-spacing: .08em; color: #aebcc2; }
     .action:active, .action.active { transform: translateY(1px) scale(.98); background: #26343d; }
@@ -76,13 +77,13 @@
 
     #pauseBtn { position: absolute; right: var(--safe-right); top: calc(var(--safe-top) + 90px); width: 46px; height: 46px; padding: 0; border-radius: 50%; pointer-events: auto; border: 1px solid rgba(255,255,255,.18); background: rgba(16,24,32,.84); color: white; font-size: 17px; font-weight: 900; cursor: pointer; }
 
-    #message { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(520px, calc(100vw - 28px)); padding: 26px 24px 22px; border-radius: 22px; background: rgba(242,238,228,.97); color: #152029; box-shadow: 0 28px 90px rgba(0,0,0,.42); text-align: center; pointer-events: auto; transition: opacity .18s, transform .18s, visibility .18s; }
-    #message.hidden { opacity: 0; visibility: hidden; transform: translate(-50%,-47%) scale(.98); pointer-events: none; }
+    #message { position: absolute; left: var(--safe-left); top: 50%; transform: translateY(-50%); width: min(410px, calc(100vw - 28px)); padding: 25px 24px 22px; border-radius: 20px; background: rgba(242,238,228,.97); color: #152029; box-shadow: 0 28px 90px rgba(0,0,0,.42); text-align: left; pointer-events: auto; transition: opacity .18s, transform .18s, visibility .18s; }
+    #message.hidden { opacity: 0; visibility: hidden; transform: translateY(-46%) translateX(-14px) scale(.98); pointer-events: none; }
     #message-kicker { font-size: 10px; font-weight: 950; letter-spacing: .2em; text-transform: uppercase; color: #bd5a2c; }
     #message-title { margin: 7px 0 8px; font-size: clamp(35px, 7vw, 58px); line-height: .92; letter-spacing: -.055em; font-weight: 1000; }
-    #message-copy { margin: 0 auto 18px; max-width: 420px; font-size: 13px; line-height: 1.5; color: #52636c; }
+    #message-copy { margin: 0 0 18px; max-width: 360px; font-size: 13px; line-height: 1.5; color: #52636c; }
     #startBtn { min-width: 190px; min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px; background: var(--player); color: #fff; font-size: 13px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 8px 20px rgba(164,71,33,.27); cursor: pointer; }
-    #secondaryRow { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    #secondaryRow { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .secondary { padding: 8px 12px; border-radius: 10px; border: 1px solid #bcc6c8; background: transparent; color: #31434c; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
 
     #callout { position: absolute; left: 50%; top: 32%; transform: translate(-50%,-50%) scale(.94); font-size: clamp(28px, 7vw, 70px); line-height: .9; font-weight: 1000; letter-spacing: -.05em; color: #fff; text-shadow: 0 4px 18px rgba(0,0,0,.48); opacity: 0; transition: opacity .12s, transform .12s; }
@@ -96,6 +97,13 @@
     #fatal p { line-height: 1.5; color: #52636c; }
 
     #testBadge { position: absolute; right: var(--safe-right); bottom: calc(var(--safe-bottom) + 76px); font-size: 8px; font-weight: 850; letter-spacing: .11em; color: rgba(255,255,255,.54); }
+
+    @media (orientation: portrait) and (max-width: 900px) {
+      #message { left: 50%; top: auto; bottom: calc(var(--safe-bottom) + 5px); transform: translateX(-50%); width: calc(100vw - 20px); max-height: 42vh; overflow: auto; padding: 20px 18px 17px; border-radius: 19px; text-align: center; }
+      #message.hidden { transform: translate(-50%, 12px) scale(.98); }
+      #message-copy { margin-left: auto; margin-right: auto; }
+      #secondaryRow { justify-content: center; }
+    }
 
     @media (max-width: 760px) {
       #topbar { grid-template-columns: 1fr 1fr; }
@@ -127,7 +135,10 @@
       .action { min-width: 0; min-height: 50px; border-radius: 11px; font-size: 9px; }
       .action small { font-size: 7px; }
       #player-marker { font-size: 8px; }
-      #message { padding: 22px 16px 18px; }
+      #message { left: 50%; top: auto; bottom: calc(var(--safe-bottom) + 4px); transform: translateX(-50%); width: calc(100vw - 18px); max-height: 46vh; overflow: auto; padding: 18px 16px 16px; border-radius: 18px; text-align: center; }
+      #message.hidden { transform: translate(-50%, 12px) scale(.98); }
+      #message-copy { margin-left: auto; margin-right: auto; }
+      #secondaryRow { justify-content: center; }
       #message-copy { font-size: 12px; }
     }
 
@@ -186,9 +197,9 @@
     </section>
 
     <section id="message">
-      <div id="message-kicker">BASE RECONSTRUÍDA</div>
+      <div id="message-kicker">CAMPANHA 1 × 1</div>
       <h1 id="message-title">COURT PONG</h1>
-      <p id="message-copy">Uma arena 3D vista por trás da sua peça. Arraste diretamente no campo; o movimento da raquete cria ângulo e curva. A campanha tem três rivais e regras progressivas.</p>
+      <p id="message-copy">A peça laranja grande à frente é você. Arraste no campo para posicioná-la; o ponto e a velocidade do contato controlam direção e curva.</p>
       <button id="startBtn" type="button">INICIAR DUELO</button>
       <div id="secondaryRow">
         <button id="difficultyBtn" class="secondary" type="button">DIFICULDADE: RIVAL</button>
@@ -813,7 +824,8 @@
         this.input = new InputController(this);
         this.installUI();
         this.resize();
-        this.resetCampaign(false);
+        this.resetCampaign(true);
+        this.updatePresentation(1);
         this.runSelfTests();
         window.addEventListener('resize', () => this.resize());
         window.__COURT_PONG_BOOTED__ = true;
@@ -962,13 +974,14 @@
         this.parryBtn.addEventListener('contextmenu', event => event.preventDefault());
       }
       showMessage(kicker, title, copy, button = 'CONTINUAR') {
+        document.body.classList.add('menu-open');
         this.messageKicker.textContent = kicker;
         this.messageTitle.textContent = title;
         this.messageCopy.textContent = copy;
         this.startBtn.textContent = button;
         this.message.classList.remove('hidden');
       }
-      hideMessage() { this.message.classList.add('hidden'); }
+      hideMessage() { document.body.classList.remove('menu-open'); this.message.classList.add('hidden'); }
       callout(title, subtitle, duration = .64) {
         this.calloutEl.innerHTML = `${title}<small>${subtitle}</small>`;
         this.calloutEl.classList.add('show');
@@ -995,7 +1008,7 @@
         this.state = 'menu';
         this.rally = 0;
         this.lastEvent = 'campaign-reset';
-        if (show) this.showMessage('BASE RECONSTRUÍDA', 'COURT PONG', 'A peça laranja é você. Arraste diretamente no campo; acerte fora do centro para mudar o ângulo e mova lateralmente no contato para criar curva.', 'INICIAR DUELO');
+        if (show) this.showMessage('CAMPANHA 1 × 1', 'COURT PONG', 'A peça laranja grande à frente é você. Arraste no campo; acerte fora do centro para mudar o ângulo e mova lateralmente no contato para criar curva.', 'INICIAR DUELO');
         this.updateHUD();
       }
       startLevel() {
@@ -1240,17 +1253,23 @@
       }
       updatePresentation(dt) {
         const aspect = innerWidth / innerHeight;
-        const portrait = aspect < .78;
-        const baseY = portrait ? 20.2 : 15.8;
-        const baseZ = portrait ? 23.8 : 19.6;
+        const phonePortrait = aspect < .58;
+        const portrait = aspect < .82;
+        const baseY = phonePortrait ? 12 : portrait ? 9 : 5;
+        const baseZ = phonePortrait ? 28 : portrait ? 22.5 : 17.5;
+        const targetZ = phonePortrait ? 6 : portrait ? 4.5 : 1.5;
         const shake = this.trauma * this.trauma;
-        const randX = (Math.random() * 2 - 1) * shake * .35;
-        const randY = (Math.random() * 2 - 1) * shake * .22;
-        const followX = this.state === 'play' ? this.ball.position.x * .035 : 0;
-        this.camera.position.x = damp(this.camera.position.x, followX + randX, 5.5, dt);
-        this.camera.position.y = damp(this.camera.position.y, baseY + randY, 5.5, dt);
-        this.camera.position.z = damp(this.camera.position.z, baseZ, 5.5, dt);
-        this.camera.lookAt(0, 0, portrait ? -1.4 : -1.8);
+        const randX = (Math.random() * 2 - 1) * shake * .28;
+        const randY = (Math.random() * 2 - 1) * shake * .16;
+        const followX = this.state === 'play' ? this.ball.position.x * .045 : 0;
+        if (this.frame < 2) {
+          this.camera.position.set(followX + randX, baseY + randY, baseZ);
+        } else {
+          this.camera.position.x = damp(this.camera.position.x, followX + randX, 6.2, dt);
+          this.camera.position.y = damp(this.camera.position.y, baseY + randY, 6.2, dt);
+          this.camera.position.z = damp(this.camera.position.z, baseZ, 6.2, dt);
+        }
+        this.camera.lookAt(0, .5, targetZ);
         this.camera.updateMatrixWorld();
         const markerPoint = new THREE.Vector3(this.player.position.x, 1.72, this.player.position.y).project(this.camera);
         const markerVisible = markerPoint.z > -1 && markerPoint.z < 1 && Math.abs(markerPoint.x) < 1.08 && Math.abs(markerPoint.y) < 1.08;
@@ -1287,8 +1306,9 @@
       }
       resize() {
         const w = innerWidth, h = innerHeight;
-        this.camera.aspect = w / h;
-        this.camera.fov = w / h < .78 ? 58 : 50;
+        const aspect = w / h;
+        this.camera.aspect = aspect;
+        this.camera.fov = aspect < .58 ? 82 : aspect < .82 ? 70 : 66;
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));
         this.renderer.setSize(w, h, false);
@@ -1324,6 +1344,8 @@
         test('three renderer active', this.renderer instanceof THREE.WebGLRenderer);
         test('player in foreground zone', this.player.position.y > 0 && this.enemy.position.y < 0);
         test('player identity ring exists', Boolean(this.player.identityRing));
+        const cameraPoint = new THREE.Vector3(this.player.position.x, .75, this.player.position.y).project(this.camera);
+        test('player framed in lower-middle view', Math.abs(cameraPoint.x) < .82 && cameraPoint.y > -.72 && cameraPoint.y < .28);
         window.__COURT_PONG_SELFTEST__ = results;
         this.testBadge.textContent = `TESTE: ${results.filter(r => r.pass).length}/${results.length} OK`;
         if (!results.every(r => r.pass)) throw new Error(`Autoteste falhou: ${results.filter(r => !r.pass).map(r => r.name).join(', ')}`);
