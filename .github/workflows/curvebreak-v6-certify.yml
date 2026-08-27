@@ -1,0 +1,135 @@
+name: Curvebreak v6 certification gate
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - 'curvebreak/game.js'
+      - 'curvebreak/style.css'
+      - 'curvebreak/v2/patch.js'
+      - 'curvebreak/v3/**'
+      - 'curvebreak/tests/gameplay-audit-v4.cjs'
+      - 'curvebreak/tests/run-v5-layout-audit.cjs'
+      - '.github/workflows/curvebreak-v6-certify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  certification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+
+    steps:
+      - name: Check out Curvebreak branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+          fetch-depth: 0
+
+      - name: Static contract
+        run: |
+          set -euo pipefail
+          test -s curvebreak/v3/index.html
+          test -s curvebreak/v3/fixes.css
+          test -s curvebreak/game.js
+          test -s curvebreak/v2/patch.js
+          test -s curvebreak/tests/gameplay-audit-v4.cjs
+          test -s curvebreak/tests/run-v5-layout-audit.cjs
+          node --check curvebreak/game.js
+          node --check curvebreak/v2/patch.js
+          node --check curvebreak/tests/gameplay-audit-v4.cjs
+          node --check curvebreak/tests/run-v5-layout-audit.cjs
+
+      - name: Install isolated browser harness
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/curvebreak-harness
+          cd /tmp/curvebreak-harness
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
+
+      - name: Run certification matrix
+        id: matrix
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+          NODE_PATH: /tmp/curvebreak-harness/node_modules
+        run: |
+          set +e
+          node curvebreak/tests/run-v5-layout-audit.cjs 2>&1 | tee /tmp/curvebreak-certification.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Write certified build record
+        if: success()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          evidence = Path('curvebreak/evidence-v5/results.json')
+          results = json.loads(evidence.read_text())
+          record = {
+              'status': 'CERTIFIED',
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_number': os.environ['GITHUB_RUN_NUMBER'],
+              'matrix_cases': len(results),
+              'engines': [item['engine'] for item in results],
+              'verified_mechanics': [
+                  'depth flight', 'spin curve', 'persistent touch target',
+                  'weapon cycling', 'dash energy', 'frozen pause clock',
+                  'shield save', 'impact-zone angle', 'Spike tip critical',
+                  'perfect parry', 'Orb capture and power serve',
+                  'viewport bounds and non-overlapping controls'
+              ],
+              'results': results,
+          }
+          Path('curvebreak/CERTIFIED.json').write_text(json.dumps(record, indent=2) + '\n')
+          Path('curvebreak/LAST_FAILURE.txt').unlink(missing_ok=True)
+          PY
+          git config user.name 'Curvebreak Certification Gate'
+          git config user.email 'actions@users.noreply.github.com'
+          git add curvebreak/CERTIFIED.json curvebreak/LAST_FAILURE.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'test(curvebreak): certify six-browser gameplay matrix [skip ci]'
+            git push origin HEAD:pong-curvebreak-rebuild
+          fi
+
+      - name: Record last failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          {
+            echo "CURVEBREAK CERTIFICATION: FAILED"
+            echo "commit=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo
+            tail -n 160 /tmp/curvebreak-certification.log 2>/dev/null || true
+            echo
+            if [ -f curvebreak/evidence-v5/failure.txt ]; then
+              cat curvebreak/evidence-v5/failure.txt
+            fi
+          } > curvebreak/LAST_FAILURE.txt
+          git config user.name 'Curvebreak Certification Gate'
+          git config user.email 'actions@users.noreply.github.com'
+          git add curvebreak/LAST_FAILURE.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'test(curvebreak): record certification failure [skip ci]'
+            git push origin HEAD:pong-curvebreak-rebuild
+          fi
+
+      - name: Upload certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: curvebreak-v6-certification-evidence
+          path: |
+            curvebreak/evidence-v5
+            /tmp/curvebreak-certification.log
+            /tmp/curvebreak-server.log
+          if-no-files-found: ignore
