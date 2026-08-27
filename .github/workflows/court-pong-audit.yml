@@ -1,0 +1,81 @@
+name: Court Pong repository gauntlet
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - index.html
+      - ATTRIBUTION.md
+      - tests/court-pong-audit.cjs
+      - .github/workflows/court-pong-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-gauntlet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+
+    steps:
+      - name: Check out rebuilt branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+
+      - name: Verify source, license and static contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -s ATTRIBUTION.md
+          test -s tests/court-pong-audit.cjs
+          grep -q 'data-build="court-pong-repo-r2"' index.html
+          grep -q '<title>Court Pong — Arena 3D</title>' index.html
+          grep -q '__COURT_PONG_DIAGNOSTICS__' index.html
+          grep -q '__COURT_PONG_TEST_HOOKS__' index.html
+          grep -q 'player identity ring exists' index.html
+          grep -q 'PongThreeJS' ATTRIBUTION.md
+          grep -q 'The MIT License' ATTRIBUTION.md || grep -q 'MIT License' ATTRIBUTION.md
+          ! grep -qi 'neon pong' index.html
+          ! grep -q 'DUEL0' index.html
+          test "$(wc -c < index.html)" -gt 65000
+          node --check tests/court-pong-audit.cjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          modules = re.findall(r'<script type="module">\s*(.*?)\s*</script>', html, re.S)
+          assert len(modules) == 1
+          Path('/tmp/court-pong.mjs').write_text(modules[0], encoding='utf-8')
+          PY
+          node --check /tmp/court-pong.mjs
+
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/court-pw
+          cd /tmp/court-pw
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright >/dev/null
+          npx playwright install --with-deps webkit >/dev/null
+
+      - name: Exercise gameplay in Chrome and WebKit
+        shell: bash
+        env:
+          NODE_PATH: /tmp/court-pw/node_modules
+          SYSTEM_CHROME: /usr/bin/google-chrome
+        run: node tests/court-pong-audit.cjs
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: court-pong-repo-evidence
+          path: |
+            evidence
+            /tmp/court-pong-server.log
+          if-no-files-found: ignore
