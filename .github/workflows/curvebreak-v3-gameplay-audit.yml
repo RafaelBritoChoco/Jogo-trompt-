@@ -1,0 +1,67 @@
+name: Curvebreak v3 gameplay gauntlet
+
+on:
+  push:
+    branches:
+      - pong-curvebreak-rebuild
+    paths:
+      - 'curvebreak/**'
+      - '.github/workflows/curvebreak-v3-gameplay-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gameplay-gauntlet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+
+    steps:
+      - name: Check out Curvebreak branch
+        uses: actions/checkout@v4
+        with:
+          ref: pong-curvebreak-rebuild
+
+      - name: Static contract and syntax checks
+        run: |
+          set -euo pipefail
+          test -s curvebreak/v2/index.html
+          test -s curvebreak/v2/patch.js
+          test -s curvebreak/game.js
+          test -s curvebreak/style.css
+          test -s curvebreak/tests/browser-audit.cjs
+          test -s curvebreak/tests/run-v3-audit.cjs
+          grep -q 'curvebreak-v2.1' curvebreak/v2/index.html
+          grep -q '__CURVEBREAK_PATCHED__' curvebreak/v2/patch.js
+          grep -q 'spin did not bend the flight path' curvebreak/tests/run-v3-audit.cjs
+          grep -q 'Spike tip did not generate' curvebreak/tests/run-v3-audit.cjs
+          node --check curvebreak/game.js
+          node --check curvebreak/v2/patch.js
+          node --check curvebreak/tests/browser-audit.cjs
+          node --check curvebreak/tests/run-v3-audit.cjs
+
+      - name: Install isolated browser harness
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/curvebreak-harness
+          cd /tmp/curvebreak-harness
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright
+          npx playwright install --with-deps webkit
+
+      - name: Run full gameplay matrix
+        env:
+          SYSTEM_CHROME: /usr/bin/google-chrome
+          NODE_PATH: /tmp/curvebreak-harness/node_modules
+        run: node curvebreak/tests/run-v3-audit.cjs
+
+      - name: Upload gameplay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: curvebreak-v3-gameplay-evidence
+          path: |
+            curvebreak/evidence
+            /tmp/curvebreak-server.log
+          if-no-files-found: ignore
