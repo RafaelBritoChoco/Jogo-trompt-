@@ -42,8 +42,22 @@ jobs:
           gzip -dc /tmp/test-r3.patch.gz > /tmp/test-r3.patch
           patch -p0 < /tmp/test-r3.patch
 
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/court-pong-audit.cjs')
+          text = path.read_text(encoding='utf-8')
+          before = """    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n    await assertLayout(page, viewport, id);\n\n    const initial = await diagnostics(page);\n"""
+          after = """    assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);\n\n    const initial = await diagnostics(page);\n"""
+          assert before in text
+          text = text.replace(before, after, 1)
+          before = """    await action(page, touch, '#startBtn');\n    await waitState(page, () => window.__COURT_PONG_DIAGNOSTICS__?.state === 'play', `${id}: match did not enter play`, 6000);\n    const liveStart = await page.evaluate(() => ({\n"""
+          after = """    await action(page, touch, '#startBtn');\n    await waitState(page, () => window.__COURT_PONG_DIAGNOSTICS__?.state === 'play', `${id}: match did not enter play`, 6000);\n    await assertLayout(page, viewport, id);\n    const liveStart = await page.evaluate(() => ({\n"""
+          assert before in text
+          path.write_text(text.replace(before, after, 1), encoding='utf-8')
+          PY
+
           echo 'b0c58a5947e042a9b8e0bd788840c7f592e7f31bacc4bc73af84a77d77fec57f  index.html' | sha256sum -c -
-          echo '3c4bfebcae158bf20dc1f714efc35761214889a29fbef6249d647b6ff00efd7f  tests/court-pong-audit.cjs' | sha256sum -c -
+          echo '79912629c5dd3edf35a2cc34c470e5a188609ff74a130ba48f7d5313bd8e598c  tests/court-pong-audit.cjs' | sha256sum -c -
           test -s ATTRIBUTION.md
           grep -q 'data-build="court-pong-repo-r3"' index.html
           grep -q 'PongThreeJS' ATTRIBUTION.md
@@ -69,6 +83,6 @@ jobs:
           if git diff --cached --quiet; then
             echo 'R3 already matches the branch.'
           else
-            git commit -m 'fix: frame the player clearly and remove menu obstruction'
+            git commit -m 'test: validate controls after closing the start menu'
             git push origin HEAD:pong-curvebreak-rebuild
           fi
