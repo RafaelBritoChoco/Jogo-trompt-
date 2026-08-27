@@ -169,6 +169,7 @@ async function runCase(browser, engine, profile) {
     assert(await page.locator('#startBtn').isVisible(), `${id}: start button missing`);
 
     const initial = await diagnostics(page);
+    assert(initial.renderProbe >= 2, `${id}: WebGL court did not produce visible pixels`);
     assert(initial.player.visible, `${id}: orange player piece is outside camera view`);
     assert(initial.player.z > 0 && initial.enemy.z < 0, `${id}: player/opponent zones are reversed`);
     assert(await page.locator('#player-marker').isVisible(), `${id}: VOCÊ marker is hidden`);
@@ -194,6 +195,7 @@ async function runCase(browser, engine, profile) {
     );
 
     await movePlayerByPointer(page, touch);
+    await page.screenshot({ path: `evidence/${id}-live.png`, fullPage: true });
 
     const weaponBefore = await page.evaluate(() => window.__COURT_PONG_DIAGNOSTICS__.player.weapon);
     await action(page, touch, '#weaponBtn', 'KeyQ');
@@ -265,7 +267,7 @@ async function runCase(browser, engine, profile) {
     assert(final.errors.length === 0, `${id}: internal errors ${final.errors.join(' | ')}`);
     assert(browserErrors.length === 0, `${id}: browser errors ${browserErrors.join(' | ')}`);
     assert(failedRequests.length === 0, `${id}: failed requests ${failedRequests.join(' | ')}`);
-    await page.screenshot({ path: `evidence/${id}-gameplay.png`, fullPage: true });
+    await page.screenshot({ path: `evidence/${id}-result.png`, fullPage: true });
 
     RESULTS.push({
       id,
@@ -276,7 +278,7 @@ async function runCase(browser, engine, profile) {
       frame: final.frame,
       build: final.build,
       weaponAfter,
-      screenshots: [`evidence/${id}-menu.png`, `evidence/${id}-gameplay.png`],
+      screenshots: [`evidence/${id}-menu.png`, `evidence/${id}-live.png`, `evidence/${id}-result.png`],
     });
   } catch (error) {
     await page.screenshot({ path: `evidence/${id}-failure.png`, fullPage: true }).catch(() => {});

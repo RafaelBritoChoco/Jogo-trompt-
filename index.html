@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-build="court-pong-repo-r3" data-test="pending">
+<html lang="pt-BR" data-build="court-pong-repo-r4" data-test="pending">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
@@ -67,6 +67,7 @@
 
     #actions { position: absolute; left: 50%; bottom: var(--safe-bottom); transform: translateX(-50%); display: grid; grid-template-columns: repeat(4, minmax(64px, 108px)); gap: 8px; pointer-events: auto; transition: opacity .16s, visibility .16s, transform .16s; }
     body.menu-open #actions { opacity: 0; visibility: hidden; pointer-events: none; transform: translateX(-50%) translateY(12px); }
+    body.menu-open #pauseBtn { opacity: 0; visibility: hidden; pointer-events: none; }
     .action { min-height: 58px; padding: 8px 9px; border: 0; border-radius: 14px; color: #f7f2e8; background: rgba(16,24,32,.92); box-shadow: 0 8px 22px rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.16); font-weight: 950; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; touch-action: none; }
     .action small { display: block; margin-top: 3px; font-size: 8px; letter-spacing: .08em; color: #aebcc2; }
     .action:active, .action.active { transform: translateY(1px) scale(.98); background: #26343d; }
@@ -816,6 +817,8 @@
         this.lastEvent = 'boot';
         this.lastHitter = null;
         this.bumpers = [];
+        this.renderProbe = 0;
+        this.bootReady = false;
         this.createLighting();
         this.createCourt();
         this.player = new Paddle(this, 'player', 0);
@@ -828,8 +831,6 @@
         this.updatePresentation(1);
         this.runSelfTests();
         window.addEventListener('resize', () => this.resize());
-        window.__COURT_PONG_BOOTED__ = true;
-        document.documentElement.dataset.test = 'pass';
         requestAnimationFrame(t => this.loop(t));
       }
       createLighting() {
@@ -1312,6 +1313,26 @@
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));
         this.renderer.setSize(w, h, false);
+        this.renderProbe = 0;
+      }
+      sampleRenderedScene() {
+        const gl = this.renderer.getContext();
+        const width = gl.drawingBufferWidth;
+        const height = gl.drawingBufferHeight;
+        const points = [[.5,.19],[.32,.34],[.68,.34],[.5,.48],[.5,.62]];
+        const pixel = new Uint8Array(4);
+        let changed = 0;
+        gl.finish();
+        for (const [px, py] of points) {
+          const x = clamp(Math.floor(width * px), 0, Math.max(0, width - 1));
+          const y = clamp(Math.floor(height * py), 0, Math.max(0, height - 1));
+          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          const distance = Math.abs(pixel[0] - 23) + Math.abs(pixel[1] - 33) + Math.abs(pixel[2] - 41);
+          const luminance = pixel[0] + pixel[1] + pixel[2];
+          if (pixel[3] > 0 && luminance > 35 && distance > 28) changed += 1;
+        }
+        this.renderProbe = changed;
+        return changed;
       }
       loop(now) {
         const frameDt = Math.min(CONFIG.maxFrame, Math.max(0, (now - this.lastFrame) / 1000));
@@ -1325,6 +1346,15 @@
         }
         this.renderer.render(this.scene, this.camera);
         this.frame += 1;
+        if (!this.bootReady && this.frame >= 2) {
+          if (this.sampleRenderedScene() >= 2) {
+            this.bootReady = true;
+            window.__COURT_PONG_BOOTED__ = true;
+            document.documentElement.dataset.test = 'pass';
+          }
+        } else if (this.bootReady && this.frame % 240 === 0) {
+          this.sampleRenderedScene();
+        }
         requestAnimationFrame(t => this.loop(t));
       }
       runSelfTests() {
@@ -1357,6 +1387,8 @@
         return {
           build: document.documentElement.dataset.build,
           state: this.state,
+          bootReady: this.bootReady,
+          renderProbe: this.renderProbe,
           frame: this.frame,
           simTime: this.time,
           level: this.levelIndex + 1,
