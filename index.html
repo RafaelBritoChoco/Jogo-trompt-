@@ -1,19 +1,1392 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-build="court-pong-repo-r2" data-test="pending">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#020611" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#172129" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="icon" href="data:," />
-  <meta http-equiv="refresh" content="0;url=./curvebreak/v3/index.html" />
-  <title>CURVEBREAK — Rift League</title>
+  <title>Court Pong — Arena 3D</title>
   <style>
-    html,body{height:100%;margin:0;background:#020611;color:#f4fdff;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center}
-    a{color:#55f6ff;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+    :root {
+      --ink: #101820;
+      --panel: #f2eee4;
+      --panel-dark: #172129;
+      --paper: #fffaf0;
+      --muted: #9bacb5;
+      --line: rgba(255,255,255,.2);
+      --player: #e17038;
+      --player-dark: #a84721;
+      --enemy: #347895;
+      --enemy-dark: #1d4d63;
+      --energy: #e7bd58;
+      --safe-top: max(12px, env(safe-area-inset-top));
+      --safe-right: max(12px, env(safe-area-inset-right));
+      --safe-bottom: max(12px, env(safe-area-inset-bottom));
+      --safe-left: max(12px, env(safe-area-inset-left));
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #172129; color: var(--paper); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; touch-action: none; user-select: none; }
+    body { position: fixed; inset: 0; }
+    button { font: inherit; }
+
+    #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+
+    #hud { position: fixed; inset: 0; pointer-events: none; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
+
+    #topbar { width: min(980px, 100%); margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; }
+
+    .fighter-card { min-height: 76px; padding: 10px 12px; border-radius: 14px; background: rgba(16,24,32,.88); border: 1px solid rgba(255,255,255,.15); box-shadow: 0 12px 32px rgba(0,0,0,.24); }
+    .fighter-card.enemy { text-align: right; }
+    .fighter-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: #d8e1e4; }
+    .fighter-card.enemy .fighter-head { flex-direction: row-reverse; }
+    .name-player { color: #ff9b68; }
+    .name-enemy { color: #70b5d0; }
+    .lives { display: flex; gap: 6px; margin-top: 9px; }
+    .fighter-card.enemy .lives { justify-content: flex-end; }
+    .life { width: 17px; height: 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.36); background: rgba(255,255,255,.08); }
+    .life.on.player { background: var(--player); border-color: #ffad83; }
+    .life.on.enemy { background: var(--enemy); border-color: #88c6df; }
+    .energy-track { height: 8px; margin-top: 9px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
+    .energy-fill { height: 100%; width: 40%; background: var(--energy); border-radius: inherit; transition: width .1s linear; }
+    .fighter-card.enemy .energy-fill { margin-left: auto; }
+
+    #match-card { min-width: 214px; padding: 10px 15px; border-radius: 14px; background: rgba(242,238,228,.94); color: var(--ink); text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,.22); }
+    #arena-label { font-size: 9px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; color: #5c6c74; }
+    #arena-name { margin-top: 2px; font-size: 17px; font-weight: 950; letter-spacing: -.025em; }
+    #status-line { margin-top: 3px; min-height: 16px; font-size: 11px; font-weight: 750; color: #4a5c65; }
+
+    #weapon-card { position: absolute; left: var(--safe-left); top: calc(var(--safe-top) + 90px); width: min(240px, 42vw); padding: 10px 12px; border-radius: 12px; background: rgba(16,24,32,.84); border: 1px solid rgba(255,255,255,.14); }
+    #weapon-name { font-size: 15px; font-weight: 950; letter-spacing: .03em; color: #fff3e9; }
+    #weapon-desc { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #b8c6cc; }
+
+    #player-marker { position: absolute; left: 50%; top: 72%; bottom: auto; transform: translate(-50%,-100%); display: flex; flex-direction: column; align-items: center; gap: 4px; color: #fff; font-size: 9px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; text-shadow: 0 2px 6px rgba(0,0,0,.75); opacity: 1; transition: opacity .12s; will-change: left, top; }
+    #player-marker::after { content: ""; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--player); }
+
+    #actions { position: absolute; left: 50%; bottom: var(--safe-bottom); transform: translateX(-50%); display: grid; grid-template-columns: repeat(4, minmax(64px, 108px)); gap: 8px; pointer-events: auto; }
+    .action { min-height: 58px; padding: 8px 9px; border: 0; border-radius: 14px; color: #f7f2e8; background: rgba(16,24,32,.92); box-shadow: 0 8px 22px rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.16); font-weight: 950; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; touch-action: none; }
+    .action small { display: block; margin-top: 3px; font-size: 8px; letter-spacing: .08em; color: #aebcc2; }
+    .action:active, .action.active { transform: translateY(1px) scale(.98); background: #26343d; }
+    #parryBtn { background: #f1ede2; color: #172129; border-color: #fff; }
+    #parryBtn small { color: #5c6a70; }
+    #dashBtn.ready { border-color: #e7bd58; }
+    #shieldBtn.ready { border-color: #91c8a2; }
+
+    #pauseBtn { position: absolute; right: var(--safe-right); top: calc(var(--safe-top) + 90px); width: 46px; height: 46px; padding: 0; border-radius: 50%; pointer-events: auto; border: 1px solid rgba(255,255,255,.18); background: rgba(16,24,32,.84); color: white; font-size: 17px; font-weight: 900; cursor: pointer; }
+
+    #message { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(520px, calc(100vw - 28px)); padding: 26px 24px 22px; border-radius: 22px; background: rgba(242,238,228,.97); color: #152029; box-shadow: 0 28px 90px rgba(0,0,0,.42); text-align: center; pointer-events: auto; transition: opacity .18s, transform .18s, visibility .18s; }
+    #message.hidden { opacity: 0; visibility: hidden; transform: translate(-50%,-47%) scale(.98); pointer-events: none; }
+    #message-kicker { font-size: 10px; font-weight: 950; letter-spacing: .2em; text-transform: uppercase; color: #bd5a2c; }
+    #message-title { margin: 7px 0 8px; font-size: clamp(35px, 7vw, 58px); line-height: .92; letter-spacing: -.055em; font-weight: 1000; }
+    #message-copy { margin: 0 auto 18px; max-width: 420px; font-size: 13px; line-height: 1.5; color: #52636c; }
+    #startBtn { min-width: 190px; min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px; background: var(--player); color: #fff; font-size: 13px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 8px 20px rgba(164,71,33,.27); cursor: pointer; }
+    #secondaryRow { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .secondary { padding: 8px 12px; border-radius: 10px; border: 1px solid #bcc6c8; background: transparent; color: #31434c; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+
+    #callout { position: absolute; left: 50%; top: 32%; transform: translate(-50%,-50%) scale(.94); font-size: clamp(28px, 7vw, 70px); line-height: .9; font-weight: 1000; letter-spacing: -.05em; color: #fff; text-shadow: 0 4px 18px rgba(0,0,0,.48); opacity: 0; transition: opacity .12s, transform .12s; }
+    #callout.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    #callout small { display: block; margin-top: 8px; font-size: 10px; letter-spacing: .17em; text-transform: uppercase; text-align: center; }
+
+    #fatal { display: none; position: fixed; inset: 0; z-index: 30; padding: 28px; background: #f3eee4; color: #172129; align-items: center; justify-content: center; text-align: center; }
+    #fatal.visible { display: flex; }
+    #fatal div { max-width: 520px; }
+    #fatal h2 { margin: 0 0 9px; font-size: 28px; }
+    #fatal p { line-height: 1.5; color: #52636c; }
+
+    #testBadge { position: absolute; right: var(--safe-right); bottom: calc(var(--safe-bottom) + 76px); font-size: 8px; font-weight: 850; letter-spacing: .11em; color: rgba(255,255,255,.54); }
+
+    @media (max-width: 760px) {
+      #topbar { grid-template-columns: 1fr 1fr; }
+      #match-card { grid-column: 1 / -1; grid-row: 1; min-width: 0; padding: 7px 12px; }
+      .fighter-card { min-height: 64px; padding: 8px 10px; }
+      #weapon-card { top: calc(var(--safe-top) + 124px); width: 48vw; }
+      #pauseBtn { top: calc(var(--safe-top) + 124px); }
+      #actions { grid-template-columns: repeat(4, minmax(58px, 86px)); gap: 6px; width: calc(100vw - var(--safe-left) - var(--safe-right)); justify-content: center; }
+      .action { min-height: 55px; padding: 7px 6px; font-size: 10px; }
+      #player-marker { font-size: 8px; }
+      #testBadge { display: none; }
+    }
+
+    @media (max-width: 430px) {
+      #hud { padding-left: 8px; padding-right: 8px; }
+      #topbar { gap: 6px; }
+      .fighter-card { min-height: 57px; padding: 7px 8px; border-radius: 11px; }
+      .fighter-head { font-size: 8px; }
+      .life { width: 13px; height: 8px; }
+      .lives { gap: 4px; margin-top: 7px; }
+      .energy-track { margin-top: 7px; height: 6px; }
+      #arena-name { font-size: 14px; }
+      #status-line { font-size: 9px; }
+      #weapon-card { top: calc(var(--safe-top) + 112px); width: 55vw; padding: 8px 9px; }
+      #weapon-name { font-size: 12px; }
+      #weapon-desc { font-size: 8px; }
+      #pauseBtn { top: calc(var(--safe-top) + 112px); right: 9px; width: 40px; height: 40px; }
+      #actions { bottom: max(6px, env(safe-area-inset-bottom)); gap: 5px; }
+      .action { min-width: 0; min-height: 50px; border-radius: 11px; font-size: 9px; }
+      .action small { font-size: 7px; }
+      #player-marker { font-size: 8px; }
+      #message { padding: 22px 16px 18px; }
+      #message-copy { font-size: 12px; }
+    }
+
+    @media (orientation: landscape) and (max-height: 560px) {
+      #topbar { width: min(820px, 75vw); }
+      .fighter-card { min-height: 52px; }
+      #match-card { min-width: 180px; padding: 6px 10px; }
+      #arena-name { font-size: 13px; }
+      #status-line { font-size: 8px; }
+      #weapon-card { top: calc(var(--safe-top) + 62px); width: 225px; }
+      #pauseBtn { top: calc(var(--safe-top) + 62px); }
+      #actions { left: auto; right: var(--safe-right); bottom: var(--safe-bottom); transform: none; grid-template-columns: repeat(2, 76px); }
+      .action { min-height: 45px; }
+      #player-marker { font-size: 8px; }
+    }
   </style>
 </head>
 <body>
-  <a href="./curvebreak/v3/index.html">Abrir CURVEBREAK</a>
-  <script>location.replace('./curvebreak/v3/index.html');</script>
+  <canvas id="game" tabindex="0" aria-label="Court Pong Arena 3D"></canvas>
+
+  <main id="hud">
+    <section id="topbar" aria-label="Estado da partida">
+      <div class="fighter-card">
+        <div class="fighter-head"><span class="name-player">VOCÊ</span><span id="playerBuff">FORMA BLADE</span></div>
+        <div id="playerLives" class="lives" aria-label="Vidas do jogador"></div>
+        <div class="energy-track"><div id="playerEnergy" class="energy-fill"></div></div>
+      </div>
+
+      <div id="match-card">
+        <div id="arena-label">ARENA 1 DE 3</div>
+        <div id="arena-name">PÁTIO DE TREINO</div>
+        <div id="status-line">Arraste a peça laranja. O impacto decide o ângulo.</div>
+      </div>
+
+      <div class="fighter-card enemy">
+        <div class="fighter-head"><span class="name-enemy" id="enemyName">RIVAL</span><span id="enemyBuff">BLADE</span></div>
+        <div id="enemyLives" class="lives" aria-label="Vidas do adversário"></div>
+        <div class="energy-track"><div id="enemyEnergy" class="energy-fill"></div></div>
+      </div>
+    </section>
+
+    <aside id="weapon-card">
+      <div id="weapon-name">BLADE</div>
+      <div id="weapon-desc">Larga e estável. O lugar do impacto controla a direção.</div>
+    </aside>
+
+    <button id="pauseBtn" type="button" aria-label="Pausar">Ⅱ</button>
+
+    <div id="player-marker">VOCÊ</div>
+
+    <section id="actions" aria-label="Ações">
+      <button id="parryBtn" class="action" type="button">PARRY<small>Segure / Espaço</small></button>
+      <button id="dashBtn" class="action ready" type="button">DASH<small>Shift</small></button>
+      <button id="shieldBtn" class="action" type="button">ESCUDO<small>E</small></button>
+      <button id="weaponBtn" class="action" type="button">FORMA<small>Q</small></button>
+    </section>
+
+    <section id="message">
+      <div id="message-kicker">BASE RECONSTRUÍDA</div>
+      <h1 id="message-title">COURT PONG</h1>
+      <p id="message-copy">Uma arena 3D vista por trás da sua peça. Arraste diretamente no campo; o movimento da raquete cria ângulo e curva. A campanha tem três rivais e regras progressivas.</p>
+      <button id="startBtn" type="button">INICIAR DUELO</button>
+      <div id="secondaryRow">
+        <button id="difficultyBtn" class="secondary" type="button">DIFICULDADE: RIVAL</button>
+        <button id="resetBtn" class="secondary" type="button">REINICIAR CAMPANHA</button>
+      </div>
+    </section>
+
+    <div id="callout">PERFEITO<small>CURVA AUMENTADA</small></div>
+    <div id="testBadge">TESTE: AGUARDANDO</div>
+  </main>
+
+  <section id="fatal" role="alert">
+    <div>
+      <h2>O motor 3D não carregou</h2>
+      <p>Abra esta página com internet ativa em Safari, Chrome ou Edge. A versão usa uma dependência Three.js fixa e verificável.</p>
+    </div>
+  </section>
+
+  <script>
+    window.__COURT_PONG_ERRORS__ = [];
+    window.addEventListener('error', event => {
+      const message = event?.error?.stack || event?.message || 'Erro desconhecido';
+      window.__COURT_PONG_ERRORS__.push(String(message));
+      if (!window.__COURT_PONG_BOOTED__) document.getElementById('fatal').classList.add('visible');
+    });
+    window.addEventListener('unhandledrejection', event => {
+      window.__COURT_PONG_ERRORS__.push(String(event.reason?.stack || event.reason || 'Promise rejeitada'));
+    });
+  </script>
+
+  <script type="module">
+    /*
+      Court Pong repo rebuild.
+      Architecture and working patterns derived from PongThreeJS by playsign (MIT, 2013):
+      fixed-step scene update, ball/paddle collider separation, player-area constraints and swipe input.
+      Original license retained in ATTRIBUTION.md and repository history.
+    */
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const damp = (current, target, lambda, dt) => lerp(current, target, 1 - Math.exp(-lambda * dt));
+    const TAU = Math.PI * 2;
+
+    const CONFIG = Object.freeze({
+      fixedStep: 1 / 120,
+      maxFrame: 1 / 20,
+      courtHalfX: 7.1,
+      goalZ: 13.35,
+      playerHomeZ: 9.65,
+      enemyHomeZ: -9.65,
+      playerMinZ: 6.65,
+      playerMaxZ: 11.25,
+      enemyMinZ: -11.25,
+      enemyMaxZ: -6.65,
+      ballRadius: .42,
+      baseBallSpeed: 10.4,
+      maxBallSpeed: 24.5,
+      wallRestitution: .995,
+      magnus: .105,
+      spinDecay: .58,
+      hitGain: 1.055,
+      hitFlatGain: .36,
+      perfectBoost: 1.26,
+      spikeBoost: 1.32,
+      parryWindow: .22,
+      perfectWindow: .105,
+      dashCost: 26,
+      shieldCost: 42,
+      dashDuration: .26,
+      shieldDuration: 5.5,
+      maxEnergy: 100,
+      passiveEnergy: 5.2,
+      hitEnergy: 7,
+      perfectEnergy: 19,
+      lives: 5,
+      pointDelay: .82,
+      countdown: .74,
+      catchChargeMax: 1.25
+    });
+
+    const WEAPONS = Object.freeze([
+      { id: 'blade', name: 'BLADE', desc: 'Larga e estável. O lugar do impacto controla a direção.', speed: 12.4, width: 4.7, depth: 1.35 },
+      { id: 'spike', name: 'SPIKE', desc: 'Menor e agressiva. A ponta frontal produz um golpe crítico.', speed: 11.8, width: 4.15, depth: 3.25 },
+      { id: 'orb', name: 'ORB', desc: 'Rápida e circular. Parry perfeito captura a bola para um saque carregado.', speed: 14.8, radius: 1.55 }
+    ]);
+
+    const DIFFICULTIES = Object.freeze([
+      { label: 'ROOKIE', reaction: .18, error: 1.05, speed: 9.6, parry: .10, ability: .06 },
+      { label: 'RIVAL', reaction: .115, error: .55, speed: 11.6, parry: .25, ability: .18 },
+      { label: 'APEX', reaction: .065, error: .20, speed: 13.4, parry: .46, ability: .34 }
+    ]);
+
+    const LEVELS = Object.freeze([
+      { name: 'PÁTIO DE TREINO', rival: 'MILO', hazard: 'none', enemyWeapon: 0, description: 'Arena limpa. Aprenda ângulo, spin e tempo de contato.' },
+      { name: 'CORREDOR DE VENTO', rival: 'SORA', hazard: 'wind', enemyWeapon: 2, description: 'Rajadas laterais mudam a curva no centro da quadra.' },
+      { name: 'CÍRCULO DO CAMPEÃO', rival: 'BRASA', hazard: 'bumpers', enemyWeapon: 1, description: 'Dois bloqueadores móveis transformam cada rally em ricochete.' }
+    ]);
+
+    class AudioBank {
+      constructor() { this.context = null; this.master = null; }
+      unlock() {
+        if (!this.context) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          this.context = new AC();
+          this.master = this.context.createGain();
+          this.master.gain.value = .22;
+          this.master.connect(this.context.destination);
+        }
+        if (this.context.state === 'suspended') this.context.resume().catch(() => {});
+      }
+      tone(frequency, duration = .08, type = 'sine', gain = .18, slide = 1) {
+        if (!this.context || this.context.state !== 'running') return;
+        const t = this.context.currentTime;
+        const osc = this.context.createOscillator();
+        const amp = this.context.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(frequency, t);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(30, frequency * slide), t + duration);
+        amp.gain.setValueAtTime(.0001, t);
+        amp.gain.exponentialRampToValueAtTime(gain, t + .006);
+        amp.gain.exponentialRampToValueAtTime(.0001, t + duration);
+        osc.connect(amp).connect(this.master);
+        osc.start(t);
+        osc.stop(t + duration + .02);
+      }
+      hit(side, perfect, spike) {
+        this.tone(perfect ? 640 : side === 'player' ? 285 : 225, perfect ? .15 : .09, perfect ? 'sawtooth' : 'triangle', perfect ? .28 : .18, perfect ? 1.65 : 1.15);
+        if (spike) this.tone(980, .12, 'square', .18, .72);
+      }
+      wall() { this.tone(135, .05, 'square', .08, .75); }
+      score(win) { this.tone(win ? 320 : 105, .30, win ? 'triangle' : 'sawtooth', .25, win ? 2.15 : .55); }
+      action(kind) {
+        if (kind === 'dash') this.tone(180, .11, 'sawtooth', .16, 2.2);
+        if (kind === 'shield') this.tone(420, .18, 'sine', .18, .70);
+        if (kind === 'weapon') this.tone(235, .09, 'square', .12, 1.45);
+        if (kind === 'catch') this.tone(520, .18, 'triangle', .2, .78);
+      }
+    }
+
+    function roundedRectShape(width, depth, radius) {
+      const w = width / 2, d = depth / 2, r = Math.min(radius, w, d);
+      const s = new THREE.Shape();
+      s.moveTo(-w + r, -d);
+      s.lineTo(w - r, -d);
+      s.quadraticCurveTo(w, -d, w, -d + r);
+      s.lineTo(w, d - r);
+      s.quadraticCurveTo(w, d, w - r, d);
+      s.lineTo(-w + r, d);
+      s.quadraticCurveTo(-w, d, -w, d - r);
+      s.lineTo(-w, -d + r);
+      s.quadraticCurveTo(-w, -d, -w + r, -d);
+      return s;
+    }
+
+    function makePlateGeometry(shape, height = .42, bevel = .12) {
+      const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3, curveSegments: 18 });
+      geometry.center();
+      geometry.rotateX(-Math.PI / 2);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    class InputController {
+      constructor(game) {
+        this.game = game;
+        this.keys = new Set();
+        this.pointerId = null;
+        this.raycaster = new THREE.Raycaster();
+        this.ndc = new THREE.Vector2();
+        this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -.48);
+        this.hit = new THREE.Vector3();
+        this.install();
+      }
+      install() {
+        const canvas = this.game.canvas;
+        canvas.addEventListener('pointerdown', event => {
+          if (event.button !== undefined && event.button !== 0) return;
+          this.pointerId = event.pointerId;
+          canvas.setPointerCapture?.(event.pointerId);
+          this.movePointer(event);
+          this.game.audio.unlock();
+        });
+        canvas.addEventListener('pointermove', event => {
+          if (this.pointerId === null && event.pointerType !== 'mouse') return;
+          if (event.pointerType === 'mouse' || event.pointerId === this.pointerId) this.movePointer(event);
+        });
+        const release = event => {
+          if (this.pointerId === event.pointerId) {
+            canvas.releasePointerCapture?.(event.pointerId);
+            this.pointerId = null;
+          }
+        };
+        canvas.addEventListener('pointerup', release);
+        canvas.addEventListener('pointercancel', release);
+
+        window.addEventListener('keydown', event => {
+          const blocked = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'];
+          if (blocked.includes(event.code)) event.preventDefault();
+          this.keys.add(event.code);
+          if (event.repeat) return;
+          if (event.code === 'Space') this.game.player.pressParry(this.game.time);
+          else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') this.game.player.dash(this.game.time);
+          else if (event.code === 'KeyE') this.game.player.shield(this.game.time);
+          else if (event.code === 'KeyQ') this.game.player.cycleWeapon();
+          else if (event.code === 'KeyP' || event.code === 'Escape') this.game.togglePause();
+          else if (event.code === 'Enter' && this.game.state !== 'play') this.game.primaryAction();
+        }, { passive: false });
+        window.addEventListener('keyup', event => {
+          this.keys.delete(event.code);
+          if (event.code === 'Space') this.game.player.releaseParry(this.game.time);
+        });
+
+        const interrupt = () => {
+          this.keys.clear();
+          this.pointerId = null;
+          this.game.player.releaseParry(this.game.time, true);
+          if (['play','serve','point'].includes(this.game.state)) this.game.pause(true);
+        };
+        window.addEventListener('blur', interrupt);
+        window.addEventListener('pagehide', interrupt);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); });
+      }
+      movePointer(event) {
+        const rect = this.game.canvas.getBoundingClientRect();
+        this.ndc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.ndc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.ndc, this.game.camera);
+        if (this.raycaster.ray.intersectPlane(this.plane, this.hit)) {
+          this.game.player.target.set(
+            clamp(this.hit.x, -CONFIG.courtHalfX + .7, CONFIG.courtHalfX - .7),
+            clamp(this.hit.z, CONFIG.playerMinZ, CONFIG.playerMaxZ)
+          );
+        }
+      }
+      keyboardVector() {
+        let x = 0, z = 0;
+        if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
+        if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
+        if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) z -= 1;
+        if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) z += 1;
+        if (x || z) {
+          const n = Math.hypot(x, z) || 1;
+          x /= n; z /= n;
+        }
+        return { x, z };
+      }
+    }
+
+    class Paddle {
+      constructor(game, side, weaponIndex = 0) {
+        this.game = game;
+        this.side = side;
+        this.weaponIndex = weaponIndex;
+        this.position = new THREE.Vector2(0, side === 'player' ? CONFIG.playerHomeZ : CONFIG.enemyHomeZ);
+        this.target = this.position.clone();
+        this.velocity = new THREE.Vector2();
+        this.energy = 54;
+        this.lives = CONFIG.lives;
+        this.dashUntil = 0;
+        this.shieldUntil = 0;
+        this.shieldCharges = 0;
+        this.parryUntil = 0;
+        this.perfectUntil = 0;
+        this.parryHeld = false;
+        this.hitPulse = 0;
+        this.group = new THREE.Group();
+        this.group.position.set(this.position.x, .48, this.position.y);
+        this.game.scene.add(this.group);
+        this.shadow = this.createShadow();
+        this.game.scene.add(this.shadow);
+        this.identityRing = this.side === 'player' ? this.createIdentityRing() : null;
+        if (this.identityRing) this.game.scene.add(this.identityRing);
+        this.shieldMesh = this.createShield();
+        this.game.scene.add(this.shieldMesh);
+        this.buildWeapon(false);
+      }
+      get weapon() { return WEAPONS[this.weaponIndex]; }
+      get color() { return this.side === 'player' ? 0xe17038 : 0x347895; }
+      get darkColor() { return this.side === 'player' ? 0xa84721 : 0x1d4d63; }
+      createShadow() {
+        const mesh = new THREE.Mesh(
+          new THREE.CircleGeometry(2.2, 32),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = .035;
+        mesh.renderOrder = 1;
+        return mesh;
+      }
+      createIdentityRing() {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(2.04, 2.28, 48),
+          new THREE.MeshBasicMaterial({ color: 0xf5a16f, transparent: true, opacity: .72, side: THREE.DoubleSide, depthWrite: false })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = .052;
+        ring.renderOrder = 2;
+        return ring;
+      }
+      createShield() {
+        const material = new THREE.MeshStandardMaterial({ color: 0x88b996, transparent: true, opacity: 0, roughness: .4, metalness: .05, side: THREE.DoubleSide, depthWrite: false });
+        const shield = new THREE.Mesh(new THREE.BoxGeometry(12.2, .16, .24), material);
+        shield.position.set(0, .3, this.side === 'player' ? CONFIG.goalZ - .34 : -CONFIG.goalZ + .34);
+        shield.visible = false;
+        return shield;
+      }
+      disposeGroup() {
+        while (this.group.children.length) {
+          const child = this.group.children[this.group.children.length - 1];
+          this.group.remove(child);
+          child.geometry?.dispose?.();
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose?.());
+          else child.material?.dispose?.();
+        }
+      }
+      buildWeapon(announce = true) {
+        this.disposeGroup();
+        const w = this.weapon;
+        const bodyMat = new THREE.MeshStandardMaterial({ color: this.color, roughness: .42, metalness: .18 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: this.darkColor, roughness: .52, metalness: .12 });
+        const creamMat = new THREE.MeshStandardMaterial({ color: 0xfff4dc, roughness: .38, metalness: .08 });
+        let body;
+        if (w.id === 'blade') {
+          body = new THREE.Mesh(makePlateGeometry(roundedRectShape(w.width, w.depth, .46), .46, .1), bodyMat);
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(w.width * .56, .12, .23), creamMat);
+          stripe.position.y = .30;
+          this.group.add(body, stripe);
+        } else if (w.id === 'spike') {
+          const shape = new THREE.Shape();
+          shape.moveTo(-w.width / 2, -w.depth / 2);
+          shape.lineTo(w.width / 2, -w.depth / 2);
+          shape.lineTo(0, w.depth / 2);
+          shape.closePath();
+          body = new THREE.Mesh(makePlateGeometry(shape, .48, .09), bodyMat);
+          const ridge = new THREE.Mesh(new THREE.ConeGeometry(.34, 1.25, 3), creamMat);
+          ridge.rotation.x = Math.PI / 2;
+          ridge.rotation.z = Math.PI;
+          ridge.position.set(0, .34, this.side === 'player' ? -.22 : .22);
+          this.group.add(body, ridge);
+        } else {
+          body = new THREE.Mesh(new THREE.CylinderGeometry(w.radius, w.radius * .88, .52, 40, 1, false), bodyMat);
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(w.radius * .62, .10, 10, 48), creamMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.y = .30;
+          this.group.add(body, ring);
+        }
+        body.castShadow = true;
+        body.receiveShadow = true;
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(.43, .55, .55, 24), darkMat);
+        hub.position.y = .48;
+        hub.castShadow = true;
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(.16, .22, 1.35, 16), darkMat);
+        handle.rotation.x = Math.PI / 2;
+        handle.position.set(0, .42, this.side === 'player' ? .88 : -.88);
+        handle.castShadow = true;
+        const marker = new THREE.Mesh(new THREE.ConeGeometry(.24, .64, 3), creamMat);
+        marker.rotation.x = this.side === 'player' ? -Math.PI / 2 : Math.PI / 2;
+        marker.position.set(0, .66, this.side === 'player' ? -.42 : .42);
+        this.group.add(hub, handle, marker);
+        if (this.side === 'enemy') this.group.rotation.y = Math.PI;
+        this.shadow.scale.set(w.id === 'orb' ? 1.25 : 1.5, w.id === 'spike' ? 1.35 : .72, 1);
+        if (announce && this.side === 'player') {
+          this.game.audio.action('weapon');
+          this.game.callout(w.name, 'FORMA ATIVA');
+          this.game.updateWeaponHUD();
+        }
+      }
+      setWeapon(index, announce = true) {
+        this.weaponIndex = (index + WEAPONS.length) % WEAPONS.length;
+        this.buildWeapon(announce);
+      }
+      cycleWeapon() { this.setWeapon(this.weaponIndex + 1, true); }
+      pressParry(time) {
+        if (this.game.ball.heldBy === this.side) {
+          this.parryHeld = true;
+          return;
+        }
+        this.parryHeld = true;
+        this.parryUntil = time + CONFIG.parryWindow;
+        this.perfectUntil = time + CONFIG.perfectWindow;
+        if (this.side === 'player') document.getElementById('parryBtn').classList.add('active');
+      }
+      releaseParry(time, interrupted = false) {
+        this.parryHeld = false;
+        if (this.side === 'player') document.getElementById('parryBtn').classList.remove('active');
+        if (!interrupted && this.game.ball.heldBy === this.side) this.game.releaseCaughtBall(this, time);
+      }
+      dash(time) {
+        if (this.energy < CONFIG.dashCost || time < this.dashUntil) return false;
+        this.energy -= CONFIG.dashCost;
+        this.dashUntil = time + CONFIG.dashDuration;
+        if (this.side === 'player') {
+          this.game.audio.action('dash');
+          this.game.callout('DASH', 'ACELERAÇÃO CURTA');
+          this.game.trauma = Math.max(this.game.trauma, .16);
+        }
+        return true;
+      }
+      shield(time) {
+        if (this.energy < CONFIG.shieldCost || this.shieldCharges > 0) return false;
+        this.energy -= CONFIG.shieldCost;
+        this.shieldCharges = 1;
+        this.shieldUntil = time + CONFIG.shieldDuration;
+        if (this.side === 'player') {
+          this.game.audio.action('shield');
+          this.game.callout('ESCUDO', 'BLOQUEIA UM GOL');
+        }
+        return true;
+      }
+      update(dt, time, inputVector = null, aiTarget = null, speedOverride = null) {
+        this.energy = clamp(this.energy + CONFIG.passiveEnergy * dt, 0, CONFIG.maxEnergy);
+        if (this.shieldCharges > 0 && time > this.shieldUntil) this.shieldCharges = 0;
+        const dash = time < this.dashUntil;
+        if (this.side === 'player' && inputVector && (inputVector.x || inputVector.z)) {
+          this.target.x += inputVector.x * this.weapon.speed * .85 * dt;
+          this.target.y += inputVector.z * this.weapon.speed * .85 * dt;
+        }
+        if (aiTarget) this.target.copy(aiTarget);
+        const minZ = this.side === 'player' ? CONFIG.playerMinZ : CONFIG.enemyMinZ;
+        const maxZ = this.side === 'player' ? CONFIG.playerMaxZ : CONFIG.enemyMaxZ;
+        this.target.x = clamp(this.target.x, -CONFIG.courtHalfX + .68, CONFIG.courtHalfX - .68);
+        this.target.y = clamp(this.target.y, minZ, maxZ);
+        const dx = this.target.x - this.position.x;
+        const dz = this.target.y - this.position.y;
+        const accel = dash ? 38 : 23;
+        this.velocity.x += (dx * accel - this.velocity.x * 8.6) * dt;
+        this.velocity.y += (dz * accel - this.velocity.y * 8.6) * dt;
+        const speedLimit = (speedOverride ?? this.weapon.speed) * (dash ? 1.92 : 1);
+        const speed = this.velocity.length();
+        if (speed > speedLimit) this.velocity.multiplyScalar(speedLimit / speed);
+        this.position.addScaledVector(this.velocity, dt);
+        this.position.x = clamp(this.position.x, -CONFIG.courtHalfX + .68, CONFIG.courtHalfX - .68);
+        this.position.y = clamp(this.position.y, minZ, maxZ);
+        this.group.position.set(this.position.x, .48 + Math.sin(time * 5 + (this.side === 'player' ? 0 : 2)) * .018, this.position.y);
+        this.shadow.position.set(this.position.x, .035, this.position.y);
+        if (this.identityRing) {
+          this.identityRing.position.set(this.position.x, .052, this.position.y);
+          const identityPulse = 1 + Math.sin(time * 4.2) * .035;
+          this.identityRing.scale.setScalar(identityPulse);
+          this.identityRing.material.opacity = time < this.parryUntil ? .98 : .72;
+        }
+        const lean = clamp(-this.velocity.x * .025, -.22, .22);
+        this.group.rotation.z = damp(this.group.rotation.z, lean, 11, dt);
+        const parryActive = time < this.parryUntil;
+        const pulse = parryActive ? 1.05 + Math.sin(time * 65) * .035 : 1;
+        this.group.scale.setScalar(damp(this.group.scale.x, pulse + this.hitPulse, 18, dt));
+        this.hitPulse = Math.max(0, this.hitPulse - dt * 4.2);
+        const shieldActive = this.shieldCharges > 0 && time < this.shieldUntil;
+        this.shieldMesh.visible = shieldActive;
+        this.shieldMesh.material.opacity = damp(this.shieldMesh.material.opacity, shieldActive ? .46 : 0, 12, dt);
+      }
+      collisionInfo(ballX, ballZ) {
+        const w = this.weapon;
+        const dx = ballX - this.position.x;
+        const forward = this.side === 'player' ? this.position.y - ballZ : ballZ - this.position.y;
+        if (w.id === 'orb') {
+          const dz = ballZ - this.position.y;
+          const hit = Math.hypot(dx, dz) <= w.radius + CONFIG.ballRadius;
+          return { hit, offset: clamp(dx / w.radius, -1, 1), tip: false };
+        }
+        if (w.id === 'blade') {
+          const hit = Math.abs(dx) <= w.width / 2 + CONFIG.ballRadius && Math.abs(forward) <= w.depth / 2 + CONFIG.ballRadius;
+          return { hit, offset: clamp(dx / (w.width / 2), -1, 1), tip: false };
+        }
+        const f = clamp((forward + w.depth / 2) / w.depth, 0, 1);
+        const halfWidth = Math.max(.18, (w.width / 2) * (1 - f));
+        const hit = forward >= -w.depth / 2 - CONFIG.ballRadius && forward <= w.depth / 2 + CONFIG.ballRadius && Math.abs(dx) <= halfWidth + CONFIG.ballRadius;
+        const tip = hit && f > .72 && Math.abs(dx) < .48;
+        return { hit, offset: clamp(dx / Math.max(.35, halfWidth), -1, 1), tip };
+      }
+    }
+
+    class Ball {
+      constructor(game) {
+        this.game = game;
+        this.position = new THREE.Vector2(0, 0);
+        this.previous = this.position.clone();
+        this.velocity = new THREE.Vector2(0, 0);
+        this.spin = 0;
+        this.heldBy = null;
+        this.heldSince = 0;
+        this.radius = CONFIG.ballRadius;
+        this.mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(this.radius, 28, 18),
+          new THREE.MeshStandardMaterial({ color: 0xfff8df, roughness: .28, metalness: .04 })
+        );
+        this.mesh.castShadow = true;
+        this.mesh.position.y = .58;
+        this.shadow = new THREE.Mesh(
+          new THREE.CircleGeometry(this.radius * 1.22, 24),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .26, depthWrite: false })
+        );
+        this.shadow.rotation.x = -Math.PI / 2;
+        this.shadow.position.y = .025;
+        this.game.scene.add(this.mesh, this.shadow);
+        this.trailPoints = Array.from({ length: 28 }, () => new THREE.Vector3());
+        const trailGeo = new THREE.BufferGeometry().setFromPoints(this.trailPoints);
+        this.trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xfff0c7, transparent: true, opacity: .5, depthWrite: false }));
+        this.game.scene.add(this.trail);
+      }
+      get speed() { return this.velocity.length(); }
+      reset() {
+        this.position.set(0, 0);
+        this.previous.copy(this.position);
+        this.velocity.set(0, 0);
+        this.spin = 0;
+        this.heldBy = null;
+        this.heldSince = 0;
+        this.trailPoints.forEach(p => p.set(0, .58, 0));
+        this.syncMesh();
+      }
+      serve(direction = 1) {
+        const angle = (Math.random() - .5) * .72;
+        this.position.set((Math.random() - .5) * 1.4, direction > 0 ? -1.2 : 1.2);
+        this.previous.copy(this.position);
+        this.velocity.set(Math.sin(angle) * CONFIG.baseBallSpeed, Math.cos(angle) * CONFIG.baseBallSpeed * direction);
+        this.spin = (Math.random() - .5) * .28;
+        this.heldBy = null;
+        this.game.state = 'play';
+        this.game.hideMessage();
+      }
+      syncMesh() {
+        this.mesh.position.set(this.position.x, .58, this.position.y);
+        this.shadow.position.set(this.position.x, .025, this.position.y);
+      }
+      updateTrail() {
+        for (let i = this.trailPoints.length - 1; i > 0; i--) this.trailPoints[i].lerp(this.trailPoints[i - 1], .83);
+        this.trailPoints[0].set(this.position.x, .57, this.position.y);
+        this.trail.geometry.setFromPoints(this.trailPoints);
+      }
+      update(dt) {
+        this.previous.copy(this.position);
+        if (this.heldBy) {
+          const paddle = this.heldBy === 'player' ? this.game.player : this.game.enemy;
+          const forward = paddle.side === 'player' ? -1 : 1;
+          this.position.set(paddle.position.x, paddle.position.y + forward * (paddle.weapon.id === 'orb' ? 1.18 : 1.0));
+          this.velocity.set(0, 0);
+          this.syncMesh();
+          this.updateTrail();
+          return;
+        }
+        const vx = this.velocity.x;
+        const vz = this.velocity.y;
+        this.velocity.x += -vz * this.spin * CONFIG.magnus * dt;
+        this.velocity.y += vx * this.spin * CONFIG.magnus * dt;
+        this.spin *= Math.exp(-CONFIG.spinDecay * dt);
+        if (this.game.level.hazard === 'wind' && Math.abs(this.position.y) < 5.2) {
+          const wind = Math.sin(this.game.time * .78) * 1.75;
+          this.velocity.x += wind * dt;
+        }
+        this.position.addScaledVector(this.velocity, dt);
+        const sideLimit = CONFIG.courtHalfX - this.radius;
+        if (this.position.x > sideLimit && this.velocity.x > 0) {
+          this.position.x = sideLimit;
+          this.velocity.x *= -CONFIG.wallRestitution;
+          this.spin *= -.82;
+          this.game.audio.wall();
+          this.game.trauma = Math.max(this.game.trauma, .045);
+        } else if (this.position.x < -sideLimit && this.velocity.x < 0) {
+          this.position.x = -sideLimit;
+          this.velocity.x *= -CONFIG.wallRestitution;
+          this.spin *= -.82;
+          this.game.audio.wall();
+          this.game.trauma = Math.max(this.game.trauma, .045);
+        }
+        this.game.resolveBumpers(this);
+        this.game.resolvePaddleCollision(this, this.game.player);
+        this.game.resolvePaddleCollision(this, this.game.enemy);
+        if (this.position.y > CONFIG.goalZ) this.game.goal('enemy');
+        else if (this.position.y < -CONFIG.goalZ) this.game.goal('player');
+        this.mesh.rotation.x += this.velocity.y * dt * .8;
+        this.mesh.rotation.z -= this.velocity.x * dt * .8;
+        this.syncMesh();
+        this.updateTrail();
+      }
+    }
+
+    class CourtPong {
+      constructor() {
+        this.canvas = document.getElementById('game');
+        this.isCoarse = matchMedia('(hover: none), (pointer: coarse)').matches;
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x172129);
+        this.scene.fog = new THREE.Fog(0x172129, 25, 55);
+        this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, .1, 100);
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: !this.isCoarse, powerPreference: 'high-performance' });
+        this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));
+        this.renderer.setSize(innerWidth, innerHeight, false);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
+        this.renderer.shadowMap.enabled = !this.isCoarse;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.audio = new AudioBank();
+        this.time = 0;
+        this.frame = 0;
+        this.accumulator = 0;
+        this.lastFrame = performance.now();
+        this.state = 'menu';
+        this.levelIndex = 0;
+        this.level = LEVELS[0];
+        this.difficultyIndex = 1;
+        this.pointTimer = 0;
+        this.serveDirection = 1;
+        this.hitStop = 0;
+        this.trauma = 0;
+        this.calloutTimer = 0;
+        this.aiTimer = 0;
+        this.aiTarget = new THREE.Vector2(0, CONFIG.enemyHomeZ);
+        this.aiPrediction = 0;
+        this.rally = 0;
+        this.lastEvent = 'boot';
+        this.lastHitter = null;
+        this.bumpers = [];
+        this.createLighting();
+        this.createCourt();
+        this.player = new Paddle(this, 'player', 0);
+        this.enemy = new Paddle(this, 'enemy', this.level.enemyWeapon);
+        this.ball = new Ball(this);
+        this.input = new InputController(this);
+        this.installUI();
+        this.resize();
+        this.resetCampaign(false);
+        this.runSelfTests();
+        window.addEventListener('resize', () => this.resize());
+        window.__COURT_PONG_BOOTED__ = true;
+        document.documentElement.dataset.test = 'pass';
+        requestAnimationFrame(t => this.loop(t));
+      }
+      createLighting() {
+        const hemi = new THREE.HemisphereLight(0xe8f2f1, 0x263038, 1.45);
+        this.scene.add(hemi);
+        const key = new THREE.DirectionalLight(0xfff0cf, 2.1);
+        key.position.set(-8, 18, 14);
+        key.castShadow = !this.isCoarse;
+        key.shadow.mapSize.set(1024, 1024);
+        key.shadow.camera.left = -18; key.shadow.camera.right = 18; key.shadow.camera.top = 18; key.shadow.camera.bottom = -18;
+        this.scene.add(key);
+        const fill = new THREE.DirectionalLight(0x9cc7d5, .75);
+        fill.position.set(12, 8, -12);
+        this.scene.add(fill);
+      }
+      createCourt() {
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x375766, roughness: .78, metalness: .04 });
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(15.2, .36, 27.8), floorMat);
+        floor.position.y = -.20;
+        floor.receiveShadow = true;
+        this.scene.add(floor);
+        const stripMatA = new THREE.MeshStandardMaterial({ color: 0x456777, roughness: .82 });
+        const stripMatB = new THREE.MeshStandardMaterial({ color: 0x3d6070, roughness: .82 });
+        for (let i = 0; i < 13; i++) {
+          const strip = new THREE.Mesh(new THREE.BoxGeometry(14.4, .025, 1.94), i % 2 ? stripMatA : stripMatB);
+          strip.position.set(0, .001, -11.64 + i * 1.94);
+          strip.receiveShadow = true;
+          this.scene.add(strip);
+        }
+        const lineMat = new THREE.MeshStandardMaterial({ color: 0xf4ead5, roughness: .55 });
+        const addLine = (w, d, x, z) => {
+          const line = new THREE.Mesh(new THREE.BoxGeometry(w, .045, d), lineMat);
+          line.position.set(x, .04, z);
+          this.scene.add(line);
+        };
+        addLine(14.5, .08, 0, 0);
+        addLine(.08, 26.2, 0, 0);
+        addLine(14.5, .10, 0, 12.9);
+        addLine(14.5, .10, 0, -12.9);
+        for (const side of [-1, 1]) {
+          const railMat = new THREE.MeshStandardMaterial({ color: 0x26343c, roughness: .58, metalness: .32 });
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(.34, .72, 28.4), railMat);
+          rail.position.set(side * 7.42, .26, 0);
+          rail.castShadow = true;
+          rail.receiveShadow = true;
+          this.scene.add(rail);
+        }
+        const goalMatP = new THREE.MeshStandardMaterial({ color: 0xc45d31, roughness: .54, metalness: .12 });
+        const goalMatE = new THREE.MeshStandardMaterial({ color: 0x2e6780, roughness: .54, metalness: .12 });
+        for (const data of [{ z: 13.55, mat: goalMatP }, { z: -13.55, mat: goalMatE }]) {
+          const goal = new THREE.Mesh(new THREE.BoxGeometry(14.8, .28, .42), data.mat);
+          goal.position.set(0, .05, data.z);
+          this.scene.add(goal);
+        }
+        const standMat = new THREE.MeshStandardMaterial({ color: 0x202a31, roughness: .7 });
+        for (const side of [-1, 1]) {
+          for (let row = 0; row < 3; row++) {
+            const stand = new THREE.Mesh(new THREE.BoxGeometry(3.2, .65 + row * .35, 26 - row * 1.6), standMat);
+            stand.position.set(side * (9.3 + row * 1.4), (.65 + row * .35) / 2 - .1, 0);
+            this.scene.add(stand);
+          }
+        }
+        this.hazardGroup = new THREE.Group();
+        this.scene.add(this.hazardGroup);
+        this.windArrows = [];
+        for (let i = 0; i < 5; i++) {
+          const arrow = new THREE.Mesh(new THREE.ConeGeometry(.18, .65, 3), new THREE.MeshStandardMaterial({ color: 0xe3d5b5, roughness: .6 }));
+          arrow.rotation.z = -Math.PI / 2;
+          arrow.position.set(-4 + i * 2, .16, 0);
+          arrow.visible = false;
+          this.hazardGroup.add(arrow);
+          this.windArrows.push(arrow);
+        }
+      }
+      createBumpers() {
+        this.bumpers.forEach(b => { this.scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+        this.bumpers = [];
+        if (this.level.hazard !== 'bumpers') return;
+        const mat = new THREE.MeshStandardMaterial({ color: 0xd5c5a2, roughness: .35, metalness: .25 });
+        for (const sign of [-1, 1]) {
+          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(.72, .86, .48, 28), mat.clone());
+          mesh.position.set(sign * 3.05, .26, 0);
+          mesh.castShadow = true;
+          this.scene.add(mesh);
+          this.bumpers.push({ mesh, radius: .82, baseX: sign * 3.05, phase: sign < 0 ? 0 : Math.PI });
+        }
+      }
+      setLevel(index) {
+        this.levelIndex = clamp(index, 0, LEVELS.length - 1);
+        this.level = LEVELS[this.levelIndex];
+        this.enemy.setWeapon(this.level.enemyWeapon, false);
+        this.enemyName.textContent = this.level.rival;
+        this.arenaLabel.textContent = `ARENA ${this.levelIndex + 1} DE ${LEVELS.length}`;
+        this.arenaName.textContent = this.level.name;
+        this.statusLine.textContent = this.level.description;
+        this.windArrows.forEach(a => a.visible = this.level.hazard === 'wind');
+        this.createBumpers();
+      }
+      installUI() {
+        this.message = document.getElementById('message');
+        this.messageKicker = document.getElementById('message-kicker');
+        this.messageTitle = document.getElementById('message-title');
+        this.messageCopy = document.getElementById('message-copy');
+        this.startBtn = document.getElementById('startBtn');
+        this.difficultyBtn = document.getElementById('difficultyBtn');
+        this.resetBtn = document.getElementById('resetBtn');
+        this.pauseBtn = document.getElementById('pauseBtn');
+        this.parryBtn = document.getElementById('parryBtn');
+        this.dashBtn = document.getElementById('dashBtn');
+        this.shieldBtn = document.getElementById('shieldBtn');
+        this.weaponBtn = document.getElementById('weaponBtn');
+        this.playerEnergy = document.getElementById('playerEnergy');
+        this.enemyEnergy = document.getElementById('enemyEnergy');
+        this.playerLivesEl = document.getElementById('playerLives');
+        this.enemyLivesEl = document.getElementById('enemyLives');
+        this.playerBuff = document.getElementById('playerBuff');
+        this.enemyBuff = document.getElementById('enemyBuff');
+        this.enemyName = document.getElementById('enemyName');
+        this.weaponName = document.getElementById('weapon-name');
+        this.weaponDesc = document.getElementById('weapon-desc');
+        this.arenaLabel = document.getElementById('arena-label');
+        this.arenaName = document.getElementById('arena-name');
+        this.statusLine = document.getElementById('status-line');
+        this.calloutEl = document.getElementById('callout');
+        this.playerMarker = document.getElementById('player-marker');
+        this.testBadge = document.getElementById('testBadge');
+        this.startBtn.addEventListener('click', () => this.primaryAction());
+        this.difficultyBtn.addEventListener('click', () => {
+          this.difficultyIndex = (this.difficultyIndex + 1) % DIFFICULTIES.length;
+          this.difficultyBtn.textContent = `DIFICULDADE: ${DIFFICULTIES[this.difficultyIndex].label}`;
+        });
+        this.resetBtn.addEventListener('click', () => this.resetCampaign(true));
+        this.pauseBtn.addEventListener('click', () => this.togglePause());
+        this.weaponBtn.addEventListener('click', () => { this.audio.unlock(); this.player.cycleWeapon(); });
+        this.dashBtn.addEventListener('click', () => { this.audio.unlock(); this.player.dash(this.time); });
+        this.shieldBtn.addEventListener('click', () => { this.audio.unlock(); this.player.shield(this.time); });
+        const parryDown = event => { event.preventDefault(); event.stopPropagation(); this.audio.unlock(); this.player.pressParry(this.time); };
+        const parryUp = event => { event.preventDefault(); event.stopPropagation(); this.player.releaseParry(this.time); };
+        this.parryBtn.addEventListener('pointerdown', parryDown);
+        this.parryBtn.addEventListener('pointerup', parryUp);
+        this.parryBtn.addEventListener('pointercancel', parryUp);
+        this.parryBtn.addEventListener('contextmenu', event => event.preventDefault());
+      }
+      showMessage(kicker, title, copy, button = 'CONTINUAR') {
+        this.messageKicker.textContent = kicker;
+        this.messageTitle.textContent = title;
+        this.messageCopy.textContent = copy;
+        this.startBtn.textContent = button;
+        this.message.classList.remove('hidden');
+      }
+      hideMessage() { this.message.classList.add('hidden'); }
+      callout(title, subtitle, duration = .64) {
+        this.calloutEl.innerHTML = `${title}<small>${subtitle}</small>`;
+        this.calloutEl.classList.add('show');
+        this.calloutTimer = duration;
+      }
+      primaryAction() {
+        this.audio.unlock();
+        if (this.state === 'menu' || this.state === 'over') this.startLevel();
+        else if (this.state === 'pause') this.resume();
+        else if (this.state === 'levelwin') this.advanceLevel();
+        else if (this.state === 'campaignwin') this.resetCampaign(true);
+      }
+      resetCampaign(show = true) {
+        this.setLevel(0);
+        this.player.lives = CONFIG.lives;
+        this.enemy.lives = CONFIG.lives;
+        this.player.energy = 54;
+        this.enemy.energy = 54;
+        this.player.position.set(0, CONFIG.playerHomeZ);
+        this.player.target.copy(this.player.position);
+        this.enemy.position.set(0, CONFIG.enemyHomeZ);
+        this.enemy.target.copy(this.enemy.position);
+        this.ball.reset();
+        this.state = 'menu';
+        this.rally = 0;
+        this.lastEvent = 'campaign-reset';
+        if (show) this.showMessage('BASE RECONSTRUÍDA', 'COURT PONG', 'A peça laranja é você. Arraste diretamente no campo; acerte fora do centro para mudar o ângulo e mova lateralmente no contato para criar curva.', 'INICIAR DUELO');
+        this.updateHUD();
+      }
+      startLevel() {
+        this.player.lives = CONFIG.lives;
+        this.enemy.lives = CONFIG.lives;
+        this.player.energy = 54;
+        this.enemy.energy = 54;
+        this.player.shieldCharges = 0;
+        this.enemy.shieldCharges = 0;
+        this.player.position.set(0, CONFIG.playerHomeZ);
+        this.player.target.copy(this.player.position);
+        this.enemy.position.set(0, CONFIG.enemyHomeZ);
+        this.enemy.target.copy(this.enemy.position);
+        this.ball.reset();
+        this.rally = 0;
+        this.serveDirection = Math.random() < .5 ? -1 : 1;
+        this.state = 'serve';
+        this.pointTimer = CONFIG.countdown;
+        this.hideMessage();
+        this.callout(`ARENA ${this.levelIndex + 1}`, this.level.name, .9);
+        this.lastEvent = 'level-start';
+      }
+      advanceLevel() {
+        if (this.levelIndex >= LEVELS.length - 1) return;
+        this.setLevel(this.levelIndex + 1);
+        this.startLevel();
+      }
+      pause(interrupted = false) {
+        if (!['play','serve','point'].includes(this.state)) return;
+        this.state = 'pause';
+        this.showMessage(interrupted ? 'PARTIDA PROTEGIDA' : 'JOGO PAUSADO', 'PAUSA', 'A simulação, energia e janelas de parry foram congeladas. Continue quando estiver pronto.', 'CONTINUAR');
+      }
+      resume() { if (this.state === 'pause') { this.state = 'play'; this.hideMessage(); this.lastFrame = performance.now(); } }
+      togglePause() { if (this.state === 'pause') this.resume(); else this.pause(false); }
+      resolvePaddleCollision(ball, paddle) {
+        if (ball.heldBy || this.state !== 'play') return;
+        const movingToPlayer = ball.velocity.y > 0;
+        if ((paddle.side === 'player' && !movingToPlayer) || (paddle.side === 'enemy' && movingToPlayer)) return;
+        const plane = paddle.position.y + (paddle.side === 'player' ? -.15 : .15);
+        const crossed = paddle.side === 'player'
+          ? ball.previous.y < plane && ball.position.y >= plane
+          : ball.previous.y > plane && ball.position.y <= plane;
+        if (!crossed) return;
+        const info = paddle.collisionInfo(ball.position.x, ball.position.y);
+        if (!info.hit) return;
+        this.onPaddleHit(ball, paddle, info);
+      }
+      onPaddleHit(ball, paddle, info) {
+        const side = paddle.side;
+        const time = this.time;
+        const perfect = time <= paddle.perfectUntil;
+        const parry = time <= paddle.parryUntil;
+        if (paddle.weapon.id === 'orb' && perfect) {
+          ball.heldBy = side;
+          ball.heldSince = time;
+          ball.velocity.set(0, 0);
+          paddle.energy = clamp(paddle.energy + CONFIG.perfectEnergy, 0, CONFIG.maxEnergy);
+          this.audio.action('catch');
+          if (side === 'player') this.callout('CAPTURA', 'SEGURE PARRY E SOLTE PARA SACAR', .9);
+          this.lastEvent = `${side}-catch`;
+          paddle.hitPulse = .08;
+          return;
+        }
+        const direction = side === 'player' ? -1 : 1;
+        const baseSpeed = clamp(ball.speed * CONFIG.hitGain + CONFIG.hitFlatGain, CONFIG.baseBallSpeed, CONFIG.maxBallSpeed);
+        let speed = baseSpeed * (perfect ? CONFIG.perfectBoost : 1) * (info.tip ? CONFIG.spikeBoost : 1);
+        speed = Math.min(speed, CONFIG.maxBallSpeed);
+        const sidePower = clamp(info.offset * .72 + paddle.velocity.x * .038, -.86, .86);
+        const zPower = Math.sqrt(Math.max(.16, 1 - sidePower * sidePower));
+        ball.velocity.set(sidePower * speed, direction * zPower * speed);
+        ball.spin = clamp(ball.spin + paddle.velocity.x * .052 + info.offset * 1.15 + (parry ? info.offset * .42 : 0), -4.8, 4.8);
+        ball.position.y = planeOffset(paddle);
+        paddle.energy = clamp(paddle.energy + (perfect ? CONFIG.perfectEnergy : CONFIG.hitEnergy), 0, CONFIG.maxEnergy);
+        paddle.hitPulse = perfect ? .15 : .08;
+        this.rally += 1;
+        this.lastHitter = side;
+        this.lastEvent = info.tip ? `${side}-spike` : perfect ? `${side}-perfect` : `${side}-hit`;
+        this.audio.hit(side, perfect, info.tip);
+        this.trauma = Math.max(this.trauma, perfect || info.tip ? .25 : .11);
+        this.hitStop = perfect || info.tip ? .045 : .018;
+        if (side === 'player' && perfect) this.callout('PERFEITO', 'CURVA E VELOCIDADE AUMENTADAS');
+        else if (side === 'player' && info.tip) this.callout('SPIKE', 'ACERTO NA PONTA');
+      }
+      releaseCaughtBall(paddle, time) {
+        if (this.ball.heldBy !== paddle.side) return;
+        const charge = clamp((time - this.ball.heldSince) / CONFIG.catchChargeMax, 0, 1);
+        const direction = paddle.side === 'player' ? -1 : 1;
+        const aimX = clamp(paddle.velocity.x * .06 + (paddle.target.x - paddle.position.x) * .16, -.78, .78);
+        const speed = lerp(13.2, CONFIG.maxBallSpeed, charge);
+        this.ball.velocity.set(aimX * speed, direction * Math.sqrt(Math.max(.2, 1 - aimX * aimX)) * speed);
+        this.ball.spin = clamp(paddle.velocity.x * .07 + aimX * 2.3, -5, 5);
+        this.ball.heldBy = null;
+        this.ball.heldSince = 0;
+        this.lastEvent = `${paddle.side}-power-serve`;
+        this.audio.hit(paddle.side, true, false);
+        if (paddle.side === 'player') this.callout(`${Math.round(charge * 100)}%`, 'SAQUE CARREGADO');
+      }
+      resolveBumpers(ball) {
+        if (this.level.hazard !== 'bumpers') return;
+        for (const bumper of this.bumpers) {
+          const dx = ball.position.x - bumper.mesh.position.x;
+          const dz = ball.position.y - bumper.mesh.position.z;
+          const distance = Math.hypot(dx, dz);
+          const min = bumper.radius + ball.radius;
+          if (distance < min && distance > .001) {
+            const nx = dx / distance, nz = dz / distance;
+            ball.position.x = bumper.mesh.position.x + nx * min;
+            ball.position.y = bumper.mesh.position.z + nz * min;
+            const dot = ball.velocity.x * nx + ball.velocity.y * nz;
+            if (dot < 0) {
+              ball.velocity.x -= 2 * dot * nx;
+              ball.velocity.y -= 2 * dot * nz;
+              ball.velocity.multiplyScalar(1.025);
+              ball.spin += nx * .55;
+              this.audio.wall();
+              this.trauma = Math.max(this.trauma, .09);
+              this.lastEvent = 'bumper';
+            }
+          }
+        }
+      }
+      useShield(side) {
+        const paddle = side === 'player' ? this.player : this.enemy;
+        if (paddle.shieldCharges <= 0 || this.time > paddle.shieldUntil) return false;
+        paddle.shieldCharges = 0;
+        const direction = side === 'player' ? -1 : 1;
+        this.ball.position.y = side === 'player' ? CONFIG.goalZ - .8 : -CONFIG.goalZ + .8;
+        this.ball.velocity.y = direction * Math.max(CONFIG.baseBallSpeed, Math.abs(this.ball.velocity.y));
+        this.ball.velocity.x += (Math.random() - .5) * 2.4;
+        this.ball.spin *= -1;
+        this.audio.action('shield');
+        this.trauma = .30;
+        this.callout(side === 'player' ? 'SALVO' : 'BLOQUEADO', 'ESCUDO CONSUMIDO');
+        this.lastEvent = `${side}-shield-save`;
+        return true;
+      }
+      goal(scorer) {
+        if (this.state !== 'play') return;
+        const conceded = scorer === 'player' ? 'enemy' : 'player';
+        if (this.useShield(conceded)) return;
+        const loser = conceded === 'player' ? this.player : this.enemy;
+        loser.lives = Math.max(0, loser.lives - 1);
+        const playerScored = scorer === 'player';
+        this.audio.score(playerScored);
+        this.trauma = .38;
+        this.rally = 0;
+        this.lastHitter = null;
+        this.lastEvent = `${scorer}-goal`;
+        this.updateHUD();
+        if (this.player.lives <= 0 || this.enemy.lives <= 0) {
+          if (this.enemy.lives <= 0) {
+            if (this.levelIndex < LEVELS.length - 1) {
+              this.state = 'levelwin';
+              this.showMessage('RIVAL DERROTADO', `${this.level.rival} CAIU`, 'A próxima arena muda a regra do rally, mas mantém sua forma e seus controles.', 'PRÓXIMA ARENA');
+            } else {
+              this.state = 'campaignwin';
+              this.showMessage('CAMPANHA COMPLETA', 'CAMPEÃO DA QUADRA', 'Você dominou ângulo, spin, formas, dash, escudo e ricochetes.', 'JOGAR NOVAMENTE');
+            }
+          } else {
+            this.state = 'over';
+            this.showMessage('DUELO ENCERRADO', `${this.level.rival} VENCEU`, 'O adversário desta arena continua no mesmo nível. Reinicie e mude forma ou ritmo de parry.', 'TENTAR NOVAMENTE');
+          }
+          this.ball.reset();
+          return;
+        }
+        this.state = 'point';
+        this.pointTimer = CONFIG.pointDelay;
+        this.serveDirection = scorer === 'player' ? 1 : -1;
+        this.ball.reset();
+        this.callout(playerScored ? 'GOL' : 'PERDEU UMA VIDA', `${this.player.lives} × ${this.enemy.lives}`, .68);
+      }
+      updateAI(dt) {
+        const diff = DIFFICULTIES[this.difficultyIndex];
+        this.aiTimer -= dt;
+        const ballApproaching = this.ball.velocity.y < 0 && !this.ball.heldBy;
+        if (this.aiTimer <= 0) {
+          this.aiTimer = diff.reaction * (.78 + Math.random() * .44);
+          let targetX = 0;
+          if (ballApproaching && Math.abs(this.ball.velocity.y) > .01) {
+            const t = (this.enemy.position.y - this.ball.position.y) / this.ball.velocity.y;
+            if (t > 0) targetX = this.predictWallX(this.ball.position.x + this.ball.velocity.x * t, CONFIG.courtHalfX - CONFIG.ballRadius);
+          }
+          targetX += (Math.random() * 2 - 1) * diff.error;
+          const attackZ = ballApproaching ? clamp(-9.0 + Math.abs(targetX - this.enemy.position.x) * .08, CONFIG.enemyMinZ, CONFIG.enemyMaxZ) : CONFIG.enemyHomeZ;
+          this.aiTarget.set(clamp(targetX, -6.15, 6.15), attackZ);
+          if (ballApproaching && this.enemy.energy > CONFIG.dashCost + 5 && Math.abs(targetX - this.enemy.position.x) > 2.3 && Math.random() < diff.ability) this.enemy.dash(this.time);
+          const timeToHit = ballApproaching ? (this.enemy.position.y - this.ball.position.y) / this.ball.velocity.y : 99;
+          if (timeToHit > 0 && timeToHit < CONFIG.parryWindow && Math.random() < diff.parry) this.enemy.pressParry(this.time);
+          if (this.enemy.lives <= 2 && this.enemy.energy > CONFIG.shieldCost && Math.random() < diff.ability * .42) this.enemy.shield(this.time);
+        }
+        this.enemy.update(dt, this.time, null, this.aiTarget, Math.min(this.enemy.weapon.speed, diff.speed));
+      }
+      predictWallX(value, limit) {
+        const span = limit * 2;
+        const period = span * 2;
+        let shifted = ((value + limit) % period + period) % period;
+        if (shifted > span) shifted = period - shifted;
+        return shifted - limit;
+      }
+      updateHazards(dt) {
+        if (this.level.hazard === 'wind') {
+          const direction = Math.sign(Math.sin(this.time * .78)) || 1;
+          this.windArrows.forEach((arrow, i) => {
+            arrow.rotation.z = direction > 0 ? -Math.PI / 2 : Math.PI / 2;
+            arrow.position.x = -4 + i * 2 + Math.sin(this.time * 1.4 + i) * .18;
+          });
+        }
+        if (this.level.hazard === 'bumpers') {
+          this.bumpers.forEach((bumper, i) => {
+            bumper.mesh.position.z = Math.sin(this.time * .82 + bumper.phase) * 3.7;
+            bumper.mesh.rotation.y += dt * (i ? -1.2 : 1.2);
+          });
+        }
+      }
+      update(dt) {
+        if (this.calloutTimer > 0) {
+          this.calloutTimer -= dt;
+          if (this.calloutTimer <= 0) this.calloutEl.classList.remove('show');
+        }
+        this.trauma = Math.max(0, this.trauma - dt * 1.65);
+        if (this.state === 'pause' || this.state === 'menu' || this.state === 'over' || this.state === 'levelwin' || this.state === 'campaignwin') {
+          this.updatePresentation(dt);
+          return;
+        }
+        if (this.hitStop > 0) {
+          this.hitStop = Math.max(0, this.hitStop - dt);
+          this.updatePresentation(dt);
+          return;
+        }
+        this.time += dt;
+        this.player.update(dt, this.time, this.input.keyboardVector());
+        this.updateAI(dt);
+        this.updateHazards(dt);
+        if (this.state === 'serve' || this.state === 'point') {
+          this.pointTimer -= dt;
+          if (this.pointTimer <= 0) this.ball.serve(this.serveDirection);
+        } else if (this.state === 'play') {
+          this.ball.update(dt);
+        }
+        this.updatePresentation(dt);
+        this.updateHUD();
+      }
+      updatePresentation(dt) {
+        const aspect = innerWidth / innerHeight;
+        const portrait = aspect < .78;
+        const baseY = portrait ? 20.2 : 15.8;
+        const baseZ = portrait ? 23.8 : 19.6;
+        const shake = this.trauma * this.trauma;
+        const randX = (Math.random() * 2 - 1) * shake * .35;
+        const randY = (Math.random() * 2 - 1) * shake * .22;
+        const followX = this.state === 'play' ? this.ball.position.x * .035 : 0;
+        this.camera.position.x = damp(this.camera.position.x, followX + randX, 5.5, dt);
+        this.camera.position.y = damp(this.camera.position.y, baseY + randY, 5.5, dt);
+        this.camera.position.z = damp(this.camera.position.z, baseZ, 5.5, dt);
+        this.camera.lookAt(0, 0, portrait ? -1.4 : -1.8);
+        this.camera.updateMatrixWorld();
+        const markerPoint = new THREE.Vector3(this.player.position.x, 1.72, this.player.position.y).project(this.camera);
+        const markerVisible = markerPoint.z > -1 && markerPoint.z < 1 && Math.abs(markerPoint.x) < 1.08 && Math.abs(markerPoint.y) < 1.08;
+        this.playerMarker.style.left = `${(markerPoint.x * .5 + .5) * 100}%`;
+        this.playerMarker.style.top = `${(-markerPoint.y * .5 + .5) * 100}%`;
+        this.playerMarker.style.bottom = 'auto';
+        this.playerMarker.style.opacity = markerVisible ? '1' : '0';
+      }
+      updateWeaponHUD() {
+        this.weaponName.textContent = this.player.weapon.name;
+        this.weaponDesc.textContent = this.player.weapon.desc;
+      }
+      updateLives(container, lives, side) {
+        const key = `${side}-${lives}`;
+        if (container.dataset.key === key) return;
+        container.dataset.key = key;
+        container.innerHTML = '';
+        for (let i = 0; i < CONFIG.lives; i++) {
+          const life = document.createElement('span');
+          life.className = `life ${i < lives ? `on ${side}` : ''}`;
+          container.appendChild(life);
+        }
+      }
+      updateHUD() {
+        this.updateLives(this.playerLivesEl, this.player.lives, 'player');
+        this.updateLives(this.enemyLivesEl, this.enemy.lives, 'enemy');
+        this.playerEnergy.style.width = `${this.player.energy}%`;
+        this.enemyEnergy.style.width = `${this.enemy.energy}%`;
+        this.playerBuff.textContent = this.ball.heldBy === 'player' ? 'BOLA CAPTURADA' : `FORMA ${this.player.weapon.name}`;
+        this.enemyBuff.textContent = this.enemy.shieldCharges ? 'ESCUDO' : this.enemy.weapon.name;
+        this.dashBtn.classList.toggle('ready', this.player.energy >= CONFIG.dashCost && this.time >= this.player.dashUntil);
+        this.shieldBtn.classList.toggle('ready', this.player.energy >= CONFIG.shieldCost && this.player.shieldCharges === 0);
+        if (this.state === 'play') this.statusLine.textContent = `Rally ${this.rally} · velocidade ${this.ball.speed.toFixed(1)} · spin ${Math.abs(this.ball.spin).toFixed(1)}`;
+      }
+      resize() {
+        const w = innerWidth, h = innerHeight;
+        this.camera.aspect = w / h;
+        this.camera.fov = w / h < .78 ? 58 : 50;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.isCoarse ? 1.45 : 1.8));
+        this.renderer.setSize(w, h, false);
+      }
+      loop(now) {
+        const frameDt = Math.min(CONFIG.maxFrame, Math.max(0, (now - this.lastFrame) / 1000));
+        this.lastFrame = now;
+        this.accumulator += frameDt;
+        let steps = 0;
+        while (this.accumulator >= CONFIG.fixedStep && steps < 10) {
+          this.update(CONFIG.fixedStep);
+          this.accumulator -= CONFIG.fixedStep;
+          steps += 1;
+        }
+        this.renderer.render(this.scene, this.camera);
+        this.frame += 1;
+        requestAnimationFrame(t => this.loop(t));
+      }
+      runSelfTests() {
+        const results = [];
+        const test = (name, condition) => results.push({ name, pass: Boolean(condition) });
+        const blade = this.player;
+        blade.setWeapon(0, false);
+        test('blade center collider', blade.collisionInfo(blade.position.x, blade.position.y).hit);
+        blade.setWeapon(1, false);
+        const tipZ = blade.position.y - blade.weapon.depth * .43;
+        test('spike tip collider', blade.collisionInfo(blade.position.x, tipZ).hit);
+        blade.setWeapon(2, false);
+        test('orb circular collider', blade.collisionInfo(blade.position.x + 1, blade.position.y).hit);
+        blade.setWeapon(0, false);
+        test('fixed step high resolution', CONFIG.fixedStep <= 1 / 120);
+        test('mobile actions exist', ['parryBtn','dashBtn','shieldBtn','weaponBtn'].every(id => document.getElementById(id)));
+        test('three renderer active', this.renderer instanceof THREE.WebGLRenderer);
+        test('player in foreground zone', this.player.position.y > 0 && this.enemy.position.y < 0);
+        test('player identity ring exists', Boolean(this.player.identityRing));
+        window.__COURT_PONG_SELFTEST__ = results;
+        this.testBadge.textContent = `TESTE: ${results.filter(r => r.pass).length}/${results.length} OK`;
+        if (!results.every(r => r.pass)) throw new Error(`Autoteste falhou: ${results.filter(r => !r.pass).map(r => r.name).join(', ')}`);
+        this.updateWeaponHUD();
+      }
+      diagnostics() {
+        const projected = new THREE.Vector3(this.player.position.x, .75, this.player.position.y).project(this.camera);
+        const playerVisible = projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < .95 && Math.abs(projected.y) < .95;
+        return {
+          build: document.documentElement.dataset.build,
+          state: this.state,
+          frame: this.frame,
+          simTime: this.time,
+          level: this.levelIndex + 1,
+          player: { x: this.player.position.x, z: this.player.position.y, weapon: this.player.weapon.id, energy: this.player.energy, lives: this.player.lives, shield: this.player.shieldCharges, visible: playerVisible },
+          enemy: { x: this.enemy.position.x, z: this.enemy.position.y, weapon: this.enemy.weapon.id, energy: this.enemy.energy, lives: this.enemy.lives, shield: this.enemy.shieldCharges },
+          ball: { x: this.ball.position.x, z: this.ball.position.y, vx: this.ball.velocity.x, vz: this.ball.velocity.y, speed: this.ball.speed, spin: this.ball.spin, heldBy: this.ball.heldBy },
+          rally: this.rally,
+          lastEvent: this.lastEvent,
+          errors: [...window.__COURT_PONG_ERRORS__]
+        };
+      }
+    }
+
+    function planeOffset(paddle) {
+      return paddle.position.y + (paddle.side === 'player' ? -.78 : .78);
+    }
+
+    const game = new CourtPong();
+    window.__COURT_PONG_GAME__ = game;
+    Object.defineProperty(window, '__COURT_PONG_DIAGNOSTICS__', { get: () => game.diagnostics() });
+    window.__COURT_PONG_TEST_HOOKS__ = {
+      start: () => game.startLevel(),
+      setWeapon: index => game.player.setWeapon(index, false),
+      setEnergy: value => { game.player.energy = clamp(value, 0, CONFIG.maxEnergy); },
+      approachPlayer: (x = 0, spin = 0, seconds = .7) => {
+        game.state = 'play';
+        game.player.position.set(x, CONFIG.playerHomeZ);
+        game.player.target.copy(game.player.position);
+        game.ball.heldBy = null;
+        game.ball.position.set(x, CONFIG.playerHomeZ - 7.2);
+        game.ball.previous.copy(game.ball.position);
+        game.ball.velocity.set(0, 7.2 / Math.max(.15, seconds));
+        game.ball.spin = spin;
+        game.lastEvent = 'test-approach-player';
+      },
+      approachEnemy: (x = 0, spin = 0, seconds = .7) => {
+        game.state = 'play';
+        game.enemy.position.set(x, CONFIG.enemyHomeZ);
+        game.enemy.target.copy(game.enemy.position);
+        game.ball.heldBy = null;
+        game.ball.position.set(x, CONFIG.enemyHomeZ + 7.2);
+        game.ball.previous.copy(game.ball.position);
+        game.ball.velocity.set(0, -7.2 / Math.max(.15, seconds));
+        game.ball.spin = spin;
+        game.lastEvent = 'test-approach-enemy';
+      },
+      score: side => game.goal(side),
+      setLives: (player, enemy) => { game.player.lives = player; game.enemy.lives = enemy; game.updateHUD(); },
+      setLevel: index => game.setLevel(index),
+      pause: () => game.pause(false),
+      resume: () => game.resume()
+    };
+  </script>
 </body>
 </html>
